@@ -27,7 +27,7 @@ def main():
         st.header("Input")
         input_method = st.radio(
             "Choose input method:",
-            ["Upload File", "Paste Text"],
+            ["Upload File", "Paste Text", "GitHub URL"],
             horizontal=True,
         )
 
@@ -43,6 +43,15 @@ def main():
             if uploaded_file is not None:
                 input_content = uploaded_file.getvalue().decode("utf-8")
                 file_name = uploaded_file.name
+        elif input_method == "GitHub URL":
+            github_url = st.text_input(
+                "GitHub Repository URL",
+                placeholder="https://github.com/user/repo",
+                help="Enter a public GitHub repository URL",
+            )
+            input_content = github_url
+            if github_url:
+                file_name = f"github.com/{github_url.split('/')[-2:]}"
         else:
             input_content = st.text_area(
                 "Paste dependencies",

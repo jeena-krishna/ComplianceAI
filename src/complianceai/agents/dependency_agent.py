@@ -253,18 +253,134 @@ class DependencyAgent:
         return None
     
     def _parse_github_url(self, url: str) -> List[Dict[str, Any]]:
-        """Parse a GitHub URL by cloning and examining dependency files.
+        """Parse a GitHub URL by fetching dependency files via GitHub API.
         
-        Note: This is a simplified implementation. In production, you'd want to:
-        1. Clone the repo (or use GitHub API)
-        2. Look for dependency files
-        3. Parse them
-        4. Clean up
+        Args:
+            url: GitHub repository URL (e.g., https://github.com/user/repo)
+            
+        Returns:
+            List of dependencies found in the repo's dependency files
         """
-        # For now, we'll return an empty list and note that this needs implementation
-        # A real implementation would:
-        # 1. Extract owner/repo from URL
-        # 2. Use GitHub API to get contents
-        # 3. Look for package.json, requirements.txt, etc.
-        # 4. Download and parse those files
-        return []
+        import requests
+        
+        # Extract owner/repo from URL
+        parsed = urlparse(url)
+        path_parts = parsed.path.strip('/').split('/')
+        
+        if len(path_parts) < 2:
+            return []
+        
+        owner = path_parts[0]
+        repo_name = path_parts[1].replace('.git', '')
+        
+        # Remove ref if specified (e.g., user/repo/tree/main)
+        if len(path_parts) > 3 and path_parts[2] == 'tree':
+            ref = path_parts[3]
+        else:
+            ref = 'main'
+        
+        # Try to fetch common dependency files
+        dependency_files = [
+            'requirements.txt',
+            'package.json',
+            'Pipfile',
+            'setup.py',
+        ]
+        
+        all_dependencies = []
+        
+        for dep_file in dependency_files:
+            content = self._fetch_github_file(owner, repo_name, dep_file, ref)
+            if content:
+                if dep_file == 'requirements.txt':
+                    deps = self._parse_raw_text(content)
+                elif dep_file == 'package.json':
+                    deps = self._parse_package_json_string(content)
+                elif dep_file in ['Pipfile', 'setup.py']:
+                    deps = []
+                else:
+                    deps = []
+                
+                all_dependencies.extend(deps)
+        
+        return all_dependencies
+    
+    def _fetch_github_file(self, owner: str, repo: str, file_path: str, ref: str = 'main') -> str:
+        """Fetch a file from GitHub API.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            file_path: Path to the file
+            ref: Branch or tag name (default: main)
+            
+        Returns:
+            File content as string, or empty string if not found
+        """
+        import requests
+        
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        
+        try:
+            response = requests.get(api_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'content' in data:
+                    import base64
+                    return base64.b64decode(data['content']).decode('utf-8')
+            return ''
+        except Exception:
+            return ''
+    
+    def _parse_package_json_string(self, content: str) -> List[Dict[str, Any]]:
+        """Parse a package.json string.
+        
+        Args:
+            content: Raw package.json content
+            
+        Returns:
+            List of dependencies
+        """
+        dependencies = []
+        
+        try:
+            data = json.loads(content)
+            
+            # Parse both dependencies and devDependencies
+            for key in ['dependencies', 'devDependencies', 'peerDependencies']:
+                deps_dict = data.get(key, {})
+                for name, version in deps_dict.items():
+                    dependencies.append({
+                        'name': name,
+                        'version': self._normalize_version(version),
+                    })
+        except json.JSONDecodeError:
+            pass
+        
+        return dependencies
+    
+    def _normalize_version(self, version: str) -> str:
+        """Normalize a version string.
+        
+        Args:
+            version: Version string (e.g., ^1.0.0, ~1.0.0, >=1.0.0)
+            
+        Returns:
+            Normalized version string
+        """
+        if version.startswith('^'):
+            return version[1:]
+        elif version.startswith('~'):
+            return version[1:]
+        elif version.startswith('>='):
+            return version[2:]
+        elif version.startswith('<='):
+            return version[2:]
+        elif version.startswith('>'):
+            return version[1:]
+        elif version.startswith('<'):
+            return version[1:]
+        elif version.startswith('='):
+            return version[1:]
+        else:
+            return version
