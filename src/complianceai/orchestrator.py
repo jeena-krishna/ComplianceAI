@@ -1,7 +1,7 @@
 """Orchestrator module that coordinates between different AI agents."""
 
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, List
 from .agents.dependency_agent import DependencyAgent
 from .agents.dependency_crawler import DependencyCrawler
 from .agents.license_agent import LicenseAgent

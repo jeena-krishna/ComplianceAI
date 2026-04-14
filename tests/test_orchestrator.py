@@ -10,8 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 # Mock the external dependencies that might not be available in test environment
 sys.modules['requests'] = Mock()
+sys.modules['aiohttp'] = Mock()
 
 from complianceai.orchestrator import Orchestrator
+from complianceai.agents.dependency_agent import DependencyAgent
 
 
 class TestOrchestrator(unittest.TestCase):
@@ -27,43 +29,63 @@ class TestOrchestrator(unittest.TestCase):
                             DependencyAgent)
         # More specific tests would go here once agents are implemented
     
-    @patch('complianceai.orchestrator.LicenseAgent')
-    @patch('complianceai.orchestrator.ConflictAgent')
-    @patch('complianceai.orchestrator.ReportAgent')
-    @patch('complianceai.orchestrator.DependencyAgent')
-    def test_run_compliance_analysis_calls_agents(self, mock_dependency, mock_report, mock_conflict, 
-                                                mock_license):
+    def test_run_compliance_analysis_calls_agents(self):
         """Test that run_compliance_analysis calls all agent methods."""
-        # Setup mocks
-        mock_dep_instance = Mock()
-        mock_dep_instance.parse_input.return_value = [{"name": "test", "version": "1.0.0"}]
-        mock_dependency.return_value = mock_dep_instance
+        # Create the orchestrator
+        orchestrator = Orchestrator()
         
-        mock_lic_instance = Mock()
-        mock_lic_instance.identify_licenses.return_value = [{"name": "test", "version": "1.0.0", "license": "MIT"}]
-        mock_license.return_value = mock_lic_instance
+        # Replace the dependency agent with a mock
+        mock_dep = Mock()
+        mock_dep.parse_input.return_value = [{"name": "test", "version": "1.0.0"}]
+        orchestrator.dependency_agent = mock_dep
         
-        mock_conf_instance = Mock()
-        mock_conf_instance.detect_conflicts.return_value = []
-        mock_conflict.return_value = mock_conf_instance
+        # Replace the crawler with a mock that returns a coroutine
+        mock_crawler = Mock()
+        # Create a mock coroutine for crawl_dependencies
+        async def mock_crawl_dependencies(*args, **kwargs):
+            return {
+                "test": {
+                    "version": "1.0.0",
+                    "license": "MIT",
+                    "dependencies": [],
+                    "depth": 1
+                }
+            }
+        mock_crawler.crawl_dependencies = mock_crawl_dependencies
+        # Wrap the async function in a Mock to track calls
+        mock_crawler.crawl_dependencies = Mock(side_effect=mock_crawl_dependencies)
+        orchestrator.dependency_crawler = mock_crawler
         
-        mock_rep_instance = Mock()
-        mock_rep_instance.generate_report.return_value = {"report": "data"}
-        mock_report.return_value = mock_rep_instance
+        # Replace the license agent with a mock
+        mock_lic = Mock()
+        mock_lic.identify_licenses.return_value = [{"name": "test", "version": "1.0.0", "license": "MIT"}]
+        orchestrator.license_agent = mock_lic
+        
+        # Replace the conflict agent with a mock
+        mock_conf = Mock()
+        mock_conf.detect_conflicts.return_value = []
+        orchestrator.conflict_agent = mock_conf
+        
+        # Replace the report agent with a mock
+        mock_rep = Mock()
+        mock_rep.generate_report.return_value = {"report": "data"}
+        orchestrator.report_agent = mock_rep
         
         # Run the method
-        result = self.orchestrator.run_compliance_analysis("/test/path")
+        result = orchestrator.run_compliance_analysis("/test/path")
         
         # Verify all methods were called
-        mock_dep_instance.parse_input.assert_called_once_with("/test/path")
-        mock_lic_instance.identify_licenses.assert_called_once_with([{"name": "test", "version": "1.0.0"}])
-        mock_conf_instance.detect_conflicts.assert_called_once_with([{"name": "test", "version": "1.0.0", "license": "MIT"}])
-        mock_rep_instance.generate_report.assert_called_once()
+        mock_dep.parse_input.assert_called_once_with("/test/path")
+        mock_crawler.crawl_dependencies.assert_called_once()
+        mock_lic.identify_licenses.assert_called_once_with([{"name": "test", "version": "1.0.0"}])
+        mock_conf.detect_conflicts.assert_called_once_with([{"name": "test", "version": "1.0.0", "license": "MIT"}])
+        mock_rep.generate_report.assert_called_once()
         
         # Verify result structure
         self.assertIn("dependencies", result)
         self.assertIn("conflicts", result)
         self.assertIn("report", result)
+        self.assertIn("dependency_tree", result)
 
 
 if __name__ == '__main__':
