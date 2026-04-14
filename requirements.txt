@@ -7,3 +7,6 @@ mypy>=0.800
 
 # Production dependencies for the crawler
 aiohttp>=3.0
+
+# Web UI
+streamlit>=1.28
