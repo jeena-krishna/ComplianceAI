@@ -158,6 +158,7 @@ class LicenseAgent:
                     'name': name,
                     'version': info.get('version'),
                     'license': info.get('license'),
+                    'license_expression': info.get('license_expression'),
                     'classifiers': info.get('classifiers', []),
                     'home_page': info.get('home_page'),
                     'project_urls': info.get('project_urls', {}),
@@ -167,10 +168,15 @@ class LicenseAgent:
         for dep in dependencies:
             name = dep.get('name', '')
             existing_license = dep.get('license')
+            license_expression = dep.get('license_expression')
             classifiers = dep.get('classifiers', [])
             
             # First try the direct license field
             normalized_license = self._normalize_license(existing_license)
+            
+            # Try license_expression field (newer PyPI field with SPDX)
+            if normalized_license == 'Unknown' and license_expression:
+                normalized_license = self._normalize_license(license_expression)
             
             # If still unknown, try to extract from classifiers
             if normalized_license == 'Unknown' and classifiers:
@@ -193,6 +199,8 @@ class LicenseAgent:
                 'license': normalized_license,
                 'license_source': self._get_license_source(existing_license, normalized_license),
                 'original_license': existing_license,
+                'license_expression': dep.get('license_expression'),
+                'classifiers': dep.get('classifiers', []),
             }
         
         return licensed_dependencies

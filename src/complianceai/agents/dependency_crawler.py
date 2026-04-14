@@ -98,7 +98,11 @@ class DependencyCrawler:
             package_info = {
                 "version": version,
                 "license": None,
-                "dependencies": []
+                "dependencies": [],
+                "classifiers": [],
+                "home_page": None,
+                "project_urls": {},
+                "license_expression": None,
             }
         
         # Normalize dependencies to a list of names for the output
@@ -109,7 +113,11 @@ class DependencyCrawler:
             "version": package_info.get("version", version),
             "license": package_info.get("license"),
             "dependencies": dep_names,
-            "depth": depth
+            "depth": depth,
+            "classifiers": package_info.get("classifiers", []),
+            "home_page": package_info.get("home_page"),
+            "project_urls": package_info.get("project_urls", {}),
+            "license_expression": package_info.get("license_expression"),
         }
         
         # Recursively crawl dependencies
@@ -279,9 +287,16 @@ class DependencyCrawler:
                             
                             dependencies.append((dep_name, version_constraint))
                     
-                    # Extract license - try direct field first, then fall back to classifiers
+                    # Extract license from three sources in priority order:
+                    # 1. license field directly
+                    # 2. license_expression field (newer PyPI field with SPDX)
+                    # 3. classifiers (look for "License ::" prefix)
                     raw_license = info.get("license")
                     if not raw_license:
+                        # Try license_expression field
+                        raw_license = info.get("license_expression")
+                    if not raw_license:
+                        # Try classifiers - look for "License ::" prefix
                         raw_license = self._extract_license_from_classifiers(info.get("classifiers", []))
                     
                     return {
@@ -290,6 +305,7 @@ class DependencyCrawler:
                         "classifiers": info.get("classifiers", []),
                         "home_page": info.get("home_page"),
                         "project_urls": info.get("project_urls", {}),
+                        "license_expression": info.get("license_expression"),
                         "dependencies": dependencies
                     }
                 else:
@@ -300,6 +316,7 @@ class DependencyCrawler:
                         "classifiers": [],
                         "home_page": None,
                         "project_urls": {},
+                        "license_expression": None,
                         "dependencies": []
                     }
         except Exception as e:
@@ -308,6 +325,9 @@ class DependencyCrawler:
                 "version": version,
                 "license": None,
                 "classifiers": [],
+                "home_page": None,
+                "project_urls": {},
+                "license_expression": None,
                 "dependencies": []
             }
     
