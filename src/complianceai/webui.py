@@ -121,13 +121,25 @@ def display_report(result):
     
     conflicts = result.get("conflicts", [])
     report = result.get("report", {})
+    
+    # Separate unknown packages for manual review
+    unknown_packages = [
+        {"Package": name, "Version": info.get("version", "")}
+        for name, info in dependencies.items()
+        if info.get("license") == "Unknown" or not info.get("license")
+    ]
+    known_packages = [
+        {"Package": name, "Version": info.get("version", ""), "License": info.get("license", "Unknown")}
+        for name, info in dependencies.items()
+        if info.get("license") and info.get("license") != "Unknown"
+    ]
 
     st.markdown("## Summary")
 
     total_deps = len(dependencies)
     critical = sum(1 for c in conflicts if c.get("severity") == "critical")
     warnings = sum(1 for c in conflicts if c.get("severity") == "warning")
-    safe = total_deps - critical - warnings
+    safe = len(known_packages) - critical - warnings
 
     cols = st.columns(4)
     with cols[0]:
@@ -222,22 +234,31 @@ def display_report(result):
 
     st.markdown("## Dependency Overview")
 
-    if dependencies:
-        dep_data = []
-        if isinstance(dependencies, dict):
-            for name, info in dependencies.items():
-                dep_data.append({
-                    "Package": name,
-                    "Version": info.get("version", "unknown") if isinstance(info, dict) else "unknown",
-                    "License": info.get("license", "Unknown") if isinstance(info, dict) else "Unknown",
-                })
-        else:
-            for dep in dependencies:
-                dep_data.append({
-                    "Package": dep.get("name", "unknown"),
-                    "Version": dep.get("version", "unknown"),
-                    "License": dep.get("license", "Unknown"),
-                })
+    if known_packages:
+        st.dataframe(
+            known_packages,
+            column_config={
+                "Package": st.column_config.TextColumn("Package", width="medium"),
+                "Version": st.column_config.TextColumn("Version", width="small"),
+                "License": st.column_config.TextColumn("License", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+        )
+    
+    # Unknown licenses section for manual review
+    if unknown_packages:
+        with st.expander(f"Packages with Undetected Licenses ({len(unknown_packages)} need manual review)"):
+            st.dataframe(
+                unknown_packages,
+                column_config={
+                    "Package": st.column_config.TextColumn("Package", width="medium"),
+                    "Version": st.column_config.TextColumn("Version", width="small"),
+                },
+                hide_index=True,
+                use_container_width=True,
+            )
+            st.caption("These packages need manual license verification.")
 
         st.dataframe(
             dep_data,

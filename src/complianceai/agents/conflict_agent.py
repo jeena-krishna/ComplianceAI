@@ -131,20 +131,7 @@ class ConflictAgent:
                     
                     conflicts.append(conflict)
         
-        unknown_packages = [dep for dep in licensed_dependencies 
-                          if dep.get('license') == 'Unknown' or not dep.get('license')]
-        
-        if unknown_packages:
-            conflicts.append({
-                'severity': 'warning',
-                'license_1': 'Unknown',
-                'license_2': 'Multiple',
-                'compatibility': 'unknown',
-                'packages': [p.get('name') for p in unknown_packages],
-                'description': f'{len(unknown_packages)} packages have unknown licenses',
-                'recommendation': 'Verify license information manually for each package'
-            })
-        
+        # Don't add Unknown licenses as conflicts - handle separately in UI
         return conflicts
     
     def _check_compatibility(self, license1: str, license2: str) -> str:

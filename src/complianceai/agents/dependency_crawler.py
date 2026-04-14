@@ -151,17 +151,89 @@ class DependencyCrawler:
             - "requests>=2.0.0" -> "requests"
             - "package[extra]>=1.0" -> "package"
             - "importlib-metadata; python_version<3.8" -> "importlib-metadata"
-        
-        Args:
-            name: Raw package name with possible version specifiers
-            
-        Returns:
-            Cleaned package name
         """
         import re
-        # Remove anything after version specifiers: <, >, =, !, ~, ;, [,
         cleaned = re.split(r'[<>=!~;\[,]', name)[0]
-        # Also strip trailing whitespace
+        cleaned = cleaned.strip()
+        return cleaned
+    
+    def _extract_license_from_classifiers(self, classifiers: list) -> str:
+        """Extract license from PyPI classifiers.
+        
+        Args:
+            classifiers: List of classifier strings from PyPI
+            
+        Returns:
+            License string or None
+        """
+        if not classifiers:
+            return None
+        
+        for classifier in classifiers:
+            classifier = classifier.lower()
+            if 'license' in classifier or 'osi approved' in classifier:
+                # Map classifier patterns to license names
+                mappings = {
+                    'mit license': 'MIT',
+                    'apache': 'Apache-2.0',
+                    'bsd 3-clause': 'BSD-3-Clause',
+                    'bsd 2-clause': 'BSD-2-Clause',
+                    'gnu general public license v3': 'GPL-3.0',
+                    'gnu general public license v2': 'GPL-2.0',
+                    'gnu lesser general public license': 'LGPL-3.0',
+                    'mozilla public license': 'MPL-2.0',
+                    'isc license': 'ISC',
+                    'python software foundation': 'PSF-2.0',
+                    'zlib license': 'Zlib',
+                    'boost software license': 'BSL-1.0',
+                    'artistic license': 'Artistic-2.0',
+                    'eclipse public license': 'EPL-2.0',
+                }
+                for pattern, license in mappings.items():
+                    if pattern in classifier:
+                        return license
+        return None
+    
+    def _extract_license_from_classifiers(self, classifiers: list) -> str:
+        """Extract license from PyPI classifiers.
+        
+        Args:
+            classifiers: List of classifier strings from PyPI
+            
+        Returns:
+            License string or None
+        """
+        if not classifiers:
+            return None
+        
+        for classifier in classifiers:
+            classifier = classifier.lower()
+            if 'license' in classifier or 'osi approved' in classifier:
+                mappings = {
+                    'mit license': 'MIT',
+                    'apache': 'Apache-2.0',
+                    'bsd 3-clause': 'BSD-3-Clause',
+                    'bsd 2-clause': 'BSD-2-Clause',
+                    'gnu general public license v3': 'GPL-3.0',
+                    'gnu general public license v2': 'GPL-2.0',
+                    'gnu lesser general public license': 'LGPL-3.0',
+                    'mozilla public license': 'MPL-2.0',
+                    'isc license': 'ISC',
+                    'python software foundation': 'PSF-2.0',
+                    'zlib license': 'Zlib',
+                    'boost software license': 'BSL-1.0',
+                    'artistic license': 'Artistic-2.0',
+                    'eclipse public license': 'EPL-2.0',
+                }
+                for pattern, license in mappings.items():
+                    if pattern in classifier:
+                        return license
+        return None
+    
+    def _clean_package_name(self, name: str) -> str:
+        """Clean package name by removing version specifiers and extras."""
+        import re
+        cleaned = re.split(r'[<>=!~;\[,]', name)[0]
         cleaned = cleaned.strip()
         return cleaned
     
@@ -207,10 +279,17 @@ class DependencyCrawler:
                             
                             dependencies.append((dep_name, version_constraint))
                     
+                    # Extract license - try direct field first, then fall back to classifiers
+                    raw_license = info.get("license")
+                    if not raw_license:
+                        raw_license = self._extract_license_from_classifiers(info.get("classifiers", []))
+                    
                     return {
                         "version": info.get("version"),
-                        "license": info.get("license"),
+                        "license": raw_license,
                         "classifiers": info.get("classifiers", []),
+                        "home_page": info.get("home_page"),
+                        "project_urls": info.get("project_urls", {}),
                         "dependencies": dependencies
                     }
                 else:
@@ -219,6 +298,8 @@ class DependencyCrawler:
                         "version": version,
                         "license": None,
                         "classifiers": [],
+                        "home_page": None,
+                        "project_urls": {},
                         "dependencies": []
                     }
         except Exception as e:

@@ -78,7 +78,7 @@ class TestConflictAgent(unittest.TestCase):
         self.assertTrue(any(c['severity'] == 'warning' for c in result))
     
     def test_detect_conflicts_multiple_unknown(self):
-        """Test detecting multiple packages with unknown licenses."""
+        """Test that unknown licenses don't create conflicts - handled separately."""
         dependencies = [
             {"name": "package-a", "version": "1.0.0", "license": "Unknown"},
             {"name": "package-b", "version": "2.0.0", "license": "Unknown"},
@@ -87,9 +87,8 @@ class TestConflictAgent(unittest.TestCase):
         
         result = self.agent.detect_conflicts(dependencies)
         
-        # Should have unknown license warning
-        unknown_warning = [c for c in result if c.get('license_1') == 'Unknown']
-        self.assertTrue(len(unknown_warning) > 0)
+        # Unknown licenses should NOT create conflicts - handled in UI
+        self.assertEqual(len(result), 0)
     
     def test_check_compatibility_same_license(self):
         """Test that same licenses are compatible."""
