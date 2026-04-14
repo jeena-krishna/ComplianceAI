@@ -17,31 +17,17 @@ ComplianceAI helps you proactively identify these issues before they become prob
 
 ## Architecture
 
-```
-    [Input: file or text]
-              |
-              v
-    +--------------------+
-    |    Orchestrator     |
-    +--------------------+
-              |
-      +--------+--------+
-      |        |        |
-      v        v        v
-   +-----+ +-----+ +-----+
-   |Parser| |License| |Conflict|
-   |Agent| | Agent | | Agent |
-   +-----+ +-----+ +-----+
-      |        |        |
-      +--------+--------+
-              |
-              v
-    +--------------------+
-    |    Report Agent    |
-    +--------------------+
-              |
-              v
-    [Compliance Report]
+```mermaid
+graph TD
+    A[Input: requirements.txt / package.json / raw text] --> B[Orchestrator]
+    B --> C[Agent 1: Dependency Parser]
+    C --> D[Agent 2: Dependency Crawler]
+    D --> E[Agent 3: License Identifier]
+    E --> F[Agent 4: Compatibility Analyzer]
+    F --> G[Agent 5: Report Generator]
+    G --> H[Compliance Report]
+    I[RAG Knowledge Base] --> E
+    I --> F
 ```
                     ┌─────────────────────┐
                     │       Input         │
