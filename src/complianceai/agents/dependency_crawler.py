@@ -134,6 +134,8 @@ class DependencyCrawler:
     async def _fetch_package_info(self, name: str, version: str) -> Dict[str, Any]:
         """Fetch package information from the appropriate registry.
         
+        Try PyPI first, then fallback to npm if PyPI returns 404.
+        
         Args:
             name: Package name
             version: Package version (can be None)
@@ -141,15 +143,16 @@ class DependencyCrawler:
         Returns:
             Dictionary with package information including dependencies
         """
-        # Determine if this is likely a Python or JavaScript package
-        # Heuristic: JavaScript packages often start with @ or have hyphens
-        # Python packages typically use underscores, dots, or just alphanumeric
-        is_js_package = name.startswith('@') or '-' in name
+        # Try PyPI first - most packages are Python packages
+        pypi_result = await self._fetch_pypi_package_info(name, version)
         
-        if is_js_package:
-            return await self._fetch_npm_package_info(name, version)
-        else:
-            return await self._fetch_pypi_package_info(name, version)
+        # Check if PyPI returned a valid result (version means success)
+        if pypi_result.get("version"):
+            return pypi_result
+        
+        # PyPI returned 404 or error - try npm as fallback
+        logger.debug(f"PyPI not found for {name}, trying npm")
+        return await self._fetch_npm_package_info(name, version)
     
     def _clean_package_name(self, name: str) -> str:
         """Clean package name by removing version specifiers and extras.

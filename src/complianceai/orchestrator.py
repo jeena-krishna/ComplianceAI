@@ -107,13 +107,12 @@ class Orchestrator:
         if licensed_dependencies is None:
             raise LicenseIdentificationError("Failed to identify licenses")
         
-        # 3b: Merge crawler license data as safety net - fill in Unknown licenses
+        # 3b: Merge crawler license data as safety net - prefer crawler's license
         for pkg_name, crawler_info in dependency_tree.items():
             crawler_license = crawler_info.get('license')
-            if crawler_license and pkg_name in licensed_dependencies:
-                current_license = licensed_dependencies[pkg_name].get('license')
-                if current_license == 'Unknown' or not current_license:
-                    normalized = self.license_agent._normalize_license(crawler_license)
+            if crawler_license and crawler_license != 'Unknown' and pkg_name in licensed_dependencies:
+                normalized = self.license_agent._normalize_license(crawler_license)
+                if normalized != 'Unknown':
                     licensed_dependencies[pkg_name]['license'] = normalized
                     licensed_dependencies[pkg_name]['original_license'] = crawler_license
                     licensed_dependencies[pkg_name]['license_source'] = 'crawler'
