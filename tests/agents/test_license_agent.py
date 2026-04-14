@@ -26,7 +26,7 @@ class TestLicenseAgent(unittest.TestCase):
     def test_identify_licenses_empty_input(self):
         """Test identifying licenses with empty input."""
         result = self.agent.identify_licenses([])
-        self.assertEqual(result, [])
+        self.assertEqual(result, {})
     
     def test_identify_licenses_with_license(self):
         """Test identifying licenses for packages that have license info."""
@@ -37,10 +37,10 @@ class TestLicenseAgent(unittest.TestCase):
         result = self.agent.identify_licenses(dependencies)
         
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["name"], "test-package")
-        self.assertEqual(result[0]["version"], "1.0.0")
-        self.assertEqual(result[0]["license"], "MIT")
-        self.assertEqual(result[0]["license_source"], "package")
+        self.assertEqual(result["test-package"]["name"], "test-package")
+        self.assertEqual(result["test-package"]["version"], "1.0.0")
+        self.assertEqual(result["test-package"]["license"], "MIT")
+        self.assertEqual(result["test-package"]["license_source"], "package")
     
     def test_identify_licenses_without_license(self):
         """Test identifying licenses for packages without license info."""
@@ -51,8 +51,8 @@ class TestLicenseAgent(unittest.TestCase):
         result = self.agent.identify_licenses(dependencies)
         
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["license"], "Unknown")
-        self.assertEqual(result[0]["license_source"], "missing")
+        self.assertEqual(result[list(result.keys())[0]]["license"], "Unknown")
+        self.assertEqual(result[list(result.keys())[0]]["license_source"], "missing")
     
     def test_identify_licenses_preserves_name_and_version(self):
         """Test that name and version are preserved."""
@@ -63,10 +63,10 @@ class TestLicenseAgent(unittest.TestCase):
         
         result = self.agent.identify_licenses(dependencies)
         
-        self.assertEqual(result[0]["name"], "numpy")
-        self.assertEqual(result[0]["version"], "1.24.0")
-        self.assertEqual(result[1]["name"], "requests")
-        self.assertEqual(result[1]["version"], "2.28.0")
+        self.assertEqual(result["numpy"]["name"], "numpy")
+        self.assertEqual(result["numpy"]["version"], "1.24.0")
+        self.assertEqual(result["requests"]["name"], "requests")
+        self.assertEqual(result["requests"]["version"], "2.28.0")
     
     def test_normalize_license_mit(self):
         """Test normalizing MIT license."""
@@ -194,13 +194,13 @@ class TestLicenseAgent(unittest.TestCase):
         
         self.assertEqual(len(result), 4)
         
-        # Check each package
-        self.assertEqual(result[0]["license"], "BSD-3-Clause")
-        self.assertEqual(result[1]["license"], "Apache-2.0")
+        # Check each package by key
+        self.assertEqual(result["numpy"]["license"], "BSD-3-Clause")
+        self.assertEqual(result["requests"]["license"], "Apache-2.0")
         # unknownpkg - no license info, not in known packages
-        self.assertEqual(result[2]["license"], "Unknown")
+        self.assertEqual(result["unknownpkg"]["license"], "Unknown")
         # flask is guessed from package name database
-        self.assertEqual(result[3]["license"], "BSD-3-Clause")
+        self.assertEqual(result["flask"]["license"], "BSD-3-Clause")
     
     def test_identify_licenses_preserves_original(self):
         """Test that original license is preserved for reference."""
@@ -210,8 +210,8 @@ class TestLicenseAgent(unittest.TestCase):
         
         result = self.agent.identify_licenses(dependencies)
         
-        self.assertEqual(result[0]["original_license"], "MIT License")
-        self.assertEqual(result[0]["license"], "MIT")  # Normalized
+        self.assertEqual(result["test-package"]["original_license"], "MIT License")
+        self.assertEqual(result["test-package"]["license"], "MIT")
 
 
 class TestGitHubLicenseDetection(unittest.TestCase):
@@ -263,7 +263,8 @@ class TestGitHubLicenseDetection(unittest.TestCase):
         ]
         
         result = self.agent.identify_licenses(dependencies)
-        self.assertIsInstance(result, list)
+        self.assertIsInstance(result, dict)
+        self.assertIn('unknown-pkg', result)
 
 
 if __name__ == '__main__':

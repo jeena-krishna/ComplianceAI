@@ -100,14 +100,19 @@ class Orchestrator:
         if report is None:
             raise ReportGenerationError("Failed to generate report")
         
-        # Format output
+        # Format output - convert dict to list for report generation
+        deps_list = [
+            {'name': name, 'license': info.get('license')}
+            for name, info in licensed_dependencies.items()
+        ]
+        
         if output_format == 'text':
             return self.report_agent.generate_text_report(
-                licensed_dependencies, conflicts, dependency_tree
+                deps_list, conflicts, dependency_tree
             )
         elif output_format == 'json':
             return self.report_agent.generate_json_report(
-                licensed_dependencies, conflicts, dependency_tree
+                deps_list, conflicts, dependency_tree
             )
         
         # Return full dict
@@ -190,58 +195,68 @@ class Orchestrator:
             except Exception:
                 pass
     
-    def _identify_licenses(self, dependency_tree: Dict[str, Any]) -> Optional[List[Dict[str, Any]]]:
+    def _identify_licenses(self, dependency_tree: Dict[str, Any]) -> Optional[Dict[str, Dict[str, Any]]]:
         """Step 3: Identify licenses for dependencies.
         
         Args:
             dependency_tree: Dictionary of dependencies from crawler
             
         Returns:
-            List of dependencies with licenses
+            Dictionary with normalized licenses, keys are package names
         """
         if not dependency_tree:
-            return []
+            return {}
         
         return self._safe_execute(
             "identify_licenses",
             self.license_agent.identify_licenses,
             dependency_tree,
-            default_return=[]
+            default_return={}
         )
     
-    def _detect_conflicts(self, licensed_dependencies: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    def _detect_conflicts(self, licensed_dependencies: Dict[str, Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
         """Step 4: Detect license conflicts.
         
         Args:
-            licensed_dependencies: List of dependencies with licenses
+            licensed_dependencies: Dictionary of dependencies with licenses
             
         Returns:
             List of conflicts
         """
+        deps_list = [
+            {'name': name, 'license': info.get('license')}
+            for name, info in licensed_dependencies.items()
+        ]
+        
         return self._safe_execute(
             "detect_conflicts",
             self.conflict_agent.detect_conflicts,
-            licensed_dependencies,
+            deps_list,
             default_return=[]
         )
     
-    def _generate_report(self, licensed_dependencies: List[Dict[str, Any]], 
+    def _generate_report(self, licensed_dependencies: Dict[str, Dict[str, Any]], 
                         conflicts: List[Dict[str, Any]],
                         dependency_tree: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Step 5: Generate compliance report.
         
         Args:
-            licensed_dependencies: List of dependencies with licenses
+            licensed_dependencies: Dictionary of dependencies with licenses
             conflicts: List of conflicts
             dependency_tree: Dependency tree dictionary
             
         Returns:
             Report dictionary
         """
+        deps_list = [
+            {'name': name, 'license': info.get('license')}
+            for name, info in licensed_dependencies.items()
+        ]
+        
         return self._safe_execute(
             "generate_report",
             self.report_agent.generate_report,
-            licensed_dependencies,
+            deps_list,
             conflicts,
             dependency_tree,
             default_return={
