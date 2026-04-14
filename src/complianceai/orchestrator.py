@@ -27,7 +27,7 @@ class Orchestrator:
             Dictionary containing analysis results
         """
         # Step 1: Scan and resolve dependencies
-        dependencies = self.dependency_agent.scan_dependencies(project_path)
+        dependencies = self.dependency_agent.parse_input(project_path)
         
         # Step 2: Identify licenses for each dependency
         licensed_dependencies = self.license_agent.identify_licenses(dependencies)

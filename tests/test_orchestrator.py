@@ -6,7 +6,10 @@ import sys
 import os
 
 # Add src to path so we can import complianceai
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+# Mock the external dependencies that might not be available in test environment
+sys.modules['requests'] = Mock()
 
 from complianceai.orchestrator import Orchestrator
 
@@ -21,23 +24,23 @@ class TestOrchestrator(unittest.TestCase):
     def test_orchestrator_initialization(self):
         """Test that the orchestrator initializes all agents."""
         self.assertIsInstance(self.orchestrator.dependency_agent, 
-                            self.orchestrator.__class__.__dict__['__annotations__'].get('dependency_agent', object))
+                            DependencyAgent)
         # More specific tests would go here once agents are implemented
     
-    @patch('complianceai.orchestrator.DependencyAgent')
     @patch('complianceai.orchestrator.LicenseAgent')
     @patch('complianceai.orchestrator.ConflictAgent')
     @patch('complianceai.orchestrator.ReportAgent')
-    def test_run_compliance_analysis_calls_agents(self, mock_report, mock_conflict, 
-                                                mock_license, mock_dependency):
+    @patch('complianceai.orchestrator.DependencyAgent')
+    def test_run_compliance_analysis_calls_agents(self, mock_dependency, mock_report, mock_conflict, 
+                                                mock_license):
         """Test that run_compliance_analysis calls all agent methods."""
         # Setup mocks
         mock_dep_instance = Mock()
-        mock_dep_instance.scan_dependencies.return_value = {"test": "data"}
+        mock_dep_instance.parse_input.return_value = [{"name": "test", "version": "1.0.0"}]
         mock_dependency.return_value = mock_dep_instance
         
         mock_lic_instance = Mock()
-        mock_lic_instance.identify_licenses.return_value = {"test": "data"}
+        mock_lic_instance.identify_licenses.return_value = [{"name": "test", "version": "1.0.0", "license": "MIT"}]
         mock_license.return_value = mock_lic_instance
         
         mock_conf_instance = Mock()
@@ -52,9 +55,9 @@ class TestOrchestrator(unittest.TestCase):
         result = self.orchestrator.run_compliance_analysis("/test/path")
         
         # Verify all methods were called
-        mock_dep_instance.scan_dependencies.assert_called_once_with("/test/path")
-        mock_lic_instance.identify_licenses.assert_called_once_with({"test": "data"})
-        mock_conf_instance.detect_conflicts.assert_called_once_with({"test": "data"})
+        mock_dep_instance.parse_input.assert_called_once_with("/test/path")
+        mock_lic_instance.identify_licenses.assert_called_once_with([{"name": "test", "version": "1.0.0"}])
+        mock_conf_instance.detect_conflicts.assert_called_once_with([{"name": "test", "version": "1.0.0", "license": "MIT"}])
         mock_rep_instance.generate_report.assert_called_once()
         
         # Verify result structure

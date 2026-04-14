@@ -12,12 +12,12 @@ class ReportAgent:
         """Initialize the Report Agent."""
         pass
     
-    def generate_report(self, licensed_dependencies: Dict[str, Any], 
+    def generate_report(self, licensed_dependencies: List[Dict[str, Any]], 
                        conflicts: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Generate a compliance report based on dependencies and conflicts.
         
         Args:
-            licensed_dependencies: Dictionary containing dependencies with license info
+            licensed_dependencies: List of dictionaries containing dependencies with license info
             conflicts: List of conflict dictionaries
             
         Returns:
@@ -27,11 +27,11 @@ class ReportAgent:
         report = {
             "timestamp": datetime.now().isoformat(),
             "summary": {
-                "total_dependencies": 0,  # TODO: Calculate actual count
+                "total_dependencies": len(licensed_dependencies),  # TODO: Calculate actual count
                 "total_conflicts": len(conflicts),
                 "risk_level": "LOW" if len(conflicts) == 0 else "HIGH"
             },
-            "dependencies": licensed_dependencies.get("dependencies", []),
+            "dependencies": licensed_dependencies,
             "conflicts": conflicts,
             "recommendations": []  # TODO: Generate based on conflicts
         }
