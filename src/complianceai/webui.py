@@ -119,15 +119,30 @@ def display_report(result):
     else:
         dependencies = deps_raw
     
-    conflicts = result.get("conflicts", [])
+    # Handle new dict format from conflict_agent or legacy list format
+    conflicts_result = result.get("conflicts", [])
+    if isinstance(conflicts_result, dict):
+        conflicts = conflicts_result.get("conflicts", [])
+        undetected_from_conflict = conflicts_result.get("undetected_licenses", [])
+    else:
+        conflicts = conflicts_result
+        undetected_from_conflict = []
+    
     report = result.get("report", {})
     
-    # Separate unknown packages for manual review
-    unknown_packages = [
-        {"Package": name, "Version": info.get("version", "")}
-        for name, info in dependencies.items()
-        if info.get("license") == "Unknown" or not info.get("license")
-    ]
+    # Use undetected_licenses from conflict_agent, fallback to manual detection
+    if undetected_from_conflict:
+        unknown_packages = [
+            {"Package": pkg.get("name", ""), "Version": pkg.get("version", "")}
+            for pkg in undetected_from_conflict
+        ]
+    else:
+        unknown_packages = [
+            {"Package": name, "Version": info.get("version", "")}
+            for name, info in dependencies.items()
+            if info.get("license") == "Unknown" or not info.get("license")
+        ]
+    
     known_packages = [
         {"Package": name, "Version": info.get("version", ""), "License": info.get("license", "Unknown")}
         for name, info in dependencies.items()

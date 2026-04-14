@@ -96,17 +96,26 @@ class ConflictAgent:
             for license_str in licenses:
                 self._license_to_category[license_str] = category
     
-    def detect_conflicts(self, licensed_dependencies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def detect_conflicts(self, licensed_dependencies: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Detect license conflicts between dependencies."""
         conflicts = []
+        undetected_licenses = []
         
         if not licensed_dependencies:
-            return conflicts
+            return {'conflicts': conflicts, 'undetected_licenses': []}
         
         license_groups = defaultdict(list)
         for dep in licensed_dependencies:
             license = dep.get('license', 'Unknown')
             license_groups[license].append(dep)
+        
+        # Collect packages with Unknown/missing licenses
+        unknown_license = license_groups.pop('Unknown', [])
+        for dep in unknown_license:
+            undetected_licenses.append({
+                'name': dep.get('name'),
+                'version': dep.get('version')
+            })
         
         licenses = list(license_groups.keys())
         
@@ -131,12 +140,17 @@ class ConflictAgent:
                     
                     conflicts.append(conflict)
         
-        # Don't add Unknown licenses as conflicts - handle separately in UI
-        return conflicts
+        return {'conflicts': conflicts, 'undetected_licenses': undetected_licenses}
     
     def _check_compatibility(self, license1: str, license2: str) -> str:
         """Check compatibility between two licenses."""
         if license1 == license2:
+            return 'compatible'
+        
+        # Unknown/missing licenses are not conflicts - they are missing data
+        if not license1 or license1 in ('Unknown', 'None', ''):
+            return 'compatible'
+        if not license2 or license2 in ('Unknown', 'None', ''):
             return 'compatible'
         
         if license1 in self.LICENSE_COMPATIBILITY:

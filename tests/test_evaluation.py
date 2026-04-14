@@ -45,7 +45,12 @@ idna==3.6
         self.assertIn("conflicts", result)
         self.assertIn("dependencies", result)
 
-        conflicts = result["conflicts"]
+        # Handle new dict format from conflict_agent
+        conflicts_result = result["conflicts"]
+        if isinstance(conflicts_result, dict):
+            conflicts = conflicts_result.get("conflicts", [])
+        else:
+            conflicts = conflicts_result
 
         critical_count = sum(
             1 for c in conflicts if c.get("severity") == "critical"
@@ -91,7 +96,11 @@ apache-2.0-package==1.0.0
 
         self.assertTrue(result.get("success"))
         
-        conflicts = result["conflicts"]
+        conflicts_result = result["conflicts"]
+        if isinstance(conflicts_result, dict):
+            conflicts = conflicts_result.get("conflicts", [])
+        else:
+            conflicts = conflicts_result
 
         critical_count = sum(
             1 for c in conflicts if c.get("severity") == "critical"
@@ -133,7 +142,11 @@ redis==5.0.1
 
         self.assertTrue(result.get("success"))
 
-        conflicts = result["conflicts"]
+        conflicts_result = result["conflicts"]
+        if isinstance(conflicts_result, dict):
+            conflicts = conflicts_result.get("conflicts", [])
+        else:
+            conflicts = conflicts_result
 
         critical_count = sum(
             1 for c in conflicts if c.get("severity") == "critical"

@@ -68,7 +68,9 @@ class TestOrchestrator(unittest.TestCase):
         result = self.orchestrator.run("numpy==1.24.0")
         
         self.assertIn('conflicts', result)
-        self.assertIsInstance(result['conflicts'], list)
+        # New format: dict with 'conflicts' and 'undetected_licenses'
+        self.assertIsInstance(result['conflicts'], dict)
+        self.assertIn('conflicts', result['conflicts'])
     
     def test_run_text_format(self):
         """Test running with text output format."""

@@ -119,9 +119,15 @@ class Orchestrator:
                     licensed_dependencies[pkg_name]['license_source'] = 'crawler'
         
         # Step 4: Detect conflicts
-        conflicts = self._detect_conflicts(licensed_dependencies)
-        if conflicts is None:
+        conflicts_result = self._detect_conflicts(licensed_dependencies)
+        if conflicts_result is None:
             raise ConflictDetectionError("Failed to detect conflicts")
+        
+        # Handle new dict format from conflict_agent (contains conflicts + undetected_licenses)
+        if isinstance(conflicts_result, dict):
+            conflicts = conflicts_result.get("conflicts", [])
+        else:
+            conflicts = conflicts_result
         
         # Step 5: Generate report
         report = self._generate_report(licensed_dependencies, conflicts, dependency_tree)
@@ -143,11 +149,11 @@ class Orchestrator:
                 deps_list, conflicts, dependency_tree
             )
         
-        # Return full dict
+        # Return full dict - include full conflicts_result (contains conflicts + undetected_licenses)
         return {
             "success": True,
             "dependencies": licensed_dependencies,
-            "conflicts": conflicts,
+            "conflicts": conflicts_result,
             "report": report,
             "dependency_tree": dependency_tree,
             "errors": self.errors if self.errors else None,

@@ -26,7 +26,7 @@ class TestConflictAgent(unittest.TestCase):
     def test_detect_conflicts_empty_input(self):
         """Test detecting conflicts with empty input."""
         result = self.agent.detect_conflicts([])
-        self.assertEqual(result, [])
+        self.assertEqual(result, {"conflicts": [], "undetected_licenses": []})
     
     def test_detect_conflicts_no_conflicts(self):
         """Test detecting conflicts when all licenses are compatible."""
@@ -38,7 +38,7 @@ class TestConflictAgent(unittest.TestCase):
         result = self.agent.detect_conflicts(dependencies)
         
         # MIT, BSD, Apache, ISC, Zlib are all mutually compatible
-        self.assertEqual(len(result), 0)
+        self.assertEqual(len(result["conflicts"]), 0)
     
     def test_detect_conflicts_gpl_with_mit(self):
         """Test that GPL and MIT are actually compatible (not conflicting)."""
@@ -51,7 +51,7 @@ class TestConflictAgent(unittest.TestCase):
         
         # Actually GPL-3.0 and MIT are compatible (can use MIT in GPL project)
         # This is NOT a conflict
-        self.assertEqual(len(result), 0)
+        self.assertEqual(len(result["conflicts"]), 0)
     
     def test_detect_conflicts_real_gpl_conflict(self):
         """Test detecting real GPL conflict with proprietary."""
@@ -74,8 +74,10 @@ class TestConflictAgent(unittest.TestCase):
         
         result = self.agent.detect_conflicts(dependencies)
         
-        # Should warn about unknown license
-        self.assertTrue(any(c['severity'] == 'warning' for c in result))
+        # Unknown licenses should NOT create conflicts - handled separately
+        self.assertEqual(len(result["conflicts"]), 0)
+        # Unknown packages should be in undetected_licenses
+        self.assertEqual(len(result["undetected_licenses"]), 1)
     
     def test_detect_conflicts_multiple_unknown(self):
         """Test that unknown licenses don't create conflicts - handled separately."""
@@ -87,8 +89,10 @@ class TestConflictAgent(unittest.TestCase):
         
         result = self.agent.detect_conflicts(dependencies)
         
-        # Unknown licenses should NOT create conflicts - handled in UI
-        self.assertEqual(len(result), 0)
+        # Unknown licenses should NOT create conflicts - handled separately
+        self.assertEqual(len(result["conflicts"]), 0)
+        # 2 explicit Unknown + 1 missing license = 3
+        self.assertEqual(len(result["undetected_licenses"]), 3)
     
     def test_check_compatibility_same_license(self):
         """Test that same licenses are compatible."""
@@ -106,8 +110,8 @@ class TestConflictAgent(unittest.TestCase):
     
     def test_check_compatibility_unknown(self):
         """Test compatibility with unknown license."""
-        # 'Unknown' license triggers unknown
-        self.assertEqual(self.agent._check_compatibility('Unknown', 'MIT'), 'unknown')
+        # Unknown license should now return 'compatible' (not a conflict)
+        self.assertEqual(self.agent._check_compatibility('Unknown', 'MIT'), 'compatible')
         # Known licenses are compatible
         self.assertEqual(self.agent._check_compatibility('BSD-3-Clause', 'ISC'), 'compatible')
         self.assertEqual(self.agent._check_compatibility('MIT', 'SomeUnknown'), 'compatible')
@@ -157,7 +161,7 @@ class TestConflictAgent(unittest.TestCase):
         
         # Should detect potential issues (AGPL is strong copyleft)
         # Just verify we get some result that mentions AGPL
-        if len(result) > 0:
+        if len(result["conflicts"]) > 0:
             self.assertIn('AGPL-3.0', str(result))
     
     def test_detect_conflicts_lgpl_dynamic_linking(self):
@@ -171,7 +175,7 @@ class TestConflictAgent(unittest.TestCase):
         
         # LGPL and MIT are compatible (dynamic linking allowed)
         # Check either no conflict or warning
-        self.assertTrue(len(result) == 0 or any(c['severity'] in ['warning', 'info'] for c in result))
+        self.assertTrue(len(result["conflicts"]) == 0 or any(c['severity'] in ['warning', 'info'] for c in result["conflicts"]))
 
 
 if __name__ == '__main__':
