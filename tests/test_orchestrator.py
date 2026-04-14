@@ -1,19 +1,20 @@
-"""Tests for the Orchestrator module."""
+"""Tests for the Orchestrator."""
 
 import unittest
-from unittest.mock import Mock, patch
 import sys
 import os
+import json
 
 # Add src to path so we can import complianceai
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock the external dependencies that might not be available in test environment
-sys.modules['requests'] = Mock()
-sys.modules['aiohttp'] = Mock()
+# Mock external dependencies to avoid network calls
+from unittest.mock import Mock, patch
+import sys as mock_sys
+mock_sys.modules['aiohttp'] = Mock()
+mock_sys.modules['requests'] = Mock()
 
-from complianceai.orchestrator import Orchestrator
-from complianceai.agents.dependency_agent import DependencyAgent
+from complianceai.orchestrator import Orchestrator, OrchestratorError
 
 
 class TestOrchestrator(unittest.TestCase):
@@ -21,71 +22,167 @@ class TestOrchestrator(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.orchestrator = Orchestrator()
+        self.orchestrator = Orchestrator(max_depth=2)
+        # Clear any errors from initialization
+        self.orchestrator.clear_errors()
     
-    def test_orchestrator_initialization(self):
-        """Test that the orchestrator initializes all agents."""
-        self.assertIsInstance(self.orchestrator.dependency_agent, 
-                            DependencyAgent)
-        # More specific tests would go here once agents are implemented
+    def test_init(self):
+        """Test that the orchestrator initializes correctly."""
+        self.assertIsInstance(self.orchestrator, Orchestrator)
+        self.assertIsNotNone(self.orchestrator.dependency_agent)
+        self.assertIsNotNone(self.orchestrator.license_agent)
+        self.assertIsNotNone(self.orchestrator.conflict_agent)
+        self.assertIsNotNone(self.orchestrator.report_agent)
     
-    def test_run_compliance_analysis_calls_agents(self):
-        """Test that run_compliance_analysis calls all agent methods."""
-        # Create the orchestrator
-        orchestrator = Orchestrator()
+    def test_init_with_max_depth(self):
+        """Test that max_depth is set correctly."""
+        orch = Orchestrator(max_depth=3)
+        self.assertEqual(orch.dependency_crawler.max_depth, 3)
+    
+    def test_run_with_raw_text(self):
+        """Test running with raw text input."""
+        result = self.orchestrator.run("numpy==1.24.0\nrequests>=2.28.0")
         
-        # Replace the dependency agent with a mock
-        mock_dep = Mock()
-        mock_dep.parse_input.return_value = [{"name": "test", "version": "1.0.0"}]
-        orchestrator.dependency_agent = mock_dep
+        self.assertIsInstance(result, dict)
+        self.assertIn('success', result)
+        self.assertTrue(result['success'])
+        self.assertIn('dependencies', result)
+        self.assertIn('report', result)
+    
+    def test_run_returns_dependencies(self):
+        """Test that run returns dependencies."""
+        result = self.orchestrator.run("numpy==1.24.0")
         
-        # Replace the crawler with a mock that returns a coroutine
-        mock_crawler = Mock()
-        # Create a mock coroutine for crawl_dependencies
-        async def mock_crawl_dependencies(*args, **kwargs):
-            return {
-                "test": {
-                    "version": "1.0.0",
-                    "license": "MIT",
-                    "dependencies": [],
-                    "depth": 1
-                }
-            }
-        mock_crawler.crawl_dependencies = mock_crawl_dependencies
-        # Wrap the async function in a Mock to track calls
-        mock_crawler.crawl_dependencies = Mock(side_effect=mock_crawl_dependencies)
-        orchestrator.dependency_crawler = mock_crawler
+        # Should have at least the parsed dependency
+        self.assertTrue(len(result['dependencies']) > 0)
+    
+    def test_run_returns_report(self):
+        """Test that run returns a report."""
+        result = self.orchestrator.run("numpy==1.24.0")
         
-        # Replace the license agent with a mock
-        mock_lic = Mock()
-        mock_lic.identify_licenses.return_value = [{"name": "test", "version": "1.0.0", "license": "MIT"}]
-        orchestrator.license_agent = mock_lic
+        self.assertIn('report', result)
+        self.assertIn('summary', result['report'])
+    
+    def test_run_returns_conflicts(self):
+        """Test that run returns conflicts list."""
+        result = self.orchestrator.run("numpy==1.24.0")
         
-        # Replace the conflict agent with a mock
-        mock_conf = Mock()
-        mock_conf.detect_conflicts.return_value = []
-        orchestrator.conflict_agent = mock_conf
+        self.assertIn('conflicts', result)
+        self.assertIsInstance(result['conflicts'], list)
+    
+    def test_run_text_format(self):
+        """Test running with text output format."""
+        result = self.orchestrator.run(
+            "numpy==1.24.0", 
+            output_format='text'
+        )
         
-        # Replace the report agent with a mock
-        mock_rep = Mock()
-        mock_rep.generate_report.return_value = {"report": "data"}
-        orchestrator.report_agent = mock_rep
+        self.assertIsInstance(result, str)
+        self.assertIn("LICENSE COMPLIANCE REPORT", result)
+    
+    def test_run_json_format(self):
+        """Test running with JSON output format."""
+        result = self.orchestrator.run(
+            "numpy==1.24.0", 
+            output_format='json'
+        )
         
-        # Run the method
-        result = orchestrator.run_compliance_analysis("/test/path")
+        self.assertIsInstance(result, str)
+        # Should be valid JSON
+        parsed = json.loads(result)
+        self.assertIn('summary', parsed)
+    
+    def test_run_with_multiple_dependencies(self):
+        """Test running with multiple dependencies."""
+        input_text = """numpy==1.24.0
+requests>=2.28.0
+flask>=2.0.0"""
         
-        # Verify all methods were called
-        mock_dep.parse_input.assert_called_once_with("/test/path")
-        mock_crawler.crawl_dependencies.assert_called_once()
-        mock_lic.identify_licenses.assert_called_once_with([{"name": "test", "version": "1.0.0"}])
-        mock_conf.detect_conflicts.assert_called_once_with([{"name": "test", "version": "1.0.0", "license": "MIT"}])
-        mock_rep.generate_report.assert_called_once()
+        result = self.orchestrator.run(input_text)
         
-        # Verify result structure
-        self.assertIn("dependencies", result)
-        self.assertIn("conflicts", result)
-        self.assertIn("report", result)
-        self.assertIn("dependency_tree", result)
+        self.assertTrue(len(result['dependencies']) >= 3)
+    
+    def test_run_empty_input(self):
+        """Test running with empty input."""
+        result = self.orchestrator.run("")
+        
+        # Should handle empty input gracefully
+        self.assertIn('success', result)
+        if result['success']:
+            self.assertIn('dependencies', result)
+    
+    def test_run_includes_dependency_tree(self):
+        """Test that run includes dependency tree."""
+        result = self.orchestrator.run("numpy==1.24.0")
+        
+        self.assertIn('dependency_tree', result)
+    
+    def test_get_errors(self):
+        """Test getting errors after execution."""
+        # Run with something that might cause errors
+        result = self.orchestrator.run("numpy==1.24.0")
+        
+        # Errors should be tracked
+        errors = self.orchestrator.get_errors()
+        self.assertIsInstance(errors, list)
+    
+    def test_clear_errors(self):
+        """Test clearing errors."""
+        # Add a mock error
+        self.orchestrator.errors.append({"step": "test", "error": "test error"})
+        
+        # Clear them
+        self.orchestrator.clear_errors()
+        
+        self.assertEqual(len(self.orchestrator.errors), 0)
+    
+    def test_flatten_dependency_tree(self):
+        """Test flattening dependency tree."""
+        tree = {
+            "numpy": {"version": "1.24.0", "license": "BSD-3-Clause"},
+            "requests": {"version": "2.28.0", "license": "Apache-2.0"},
+        }
+        
+        flattened = self.orchestrator._flatten_dependency_tree(tree)
+        
+        self.assertEqual(len(flattened), 2)
+        self.assertEqual(flattened[0]['name'], "numpy")
+        self.assertEqual(flattened[0]['version'], "1.24.0")
+    
+    def test_flatten_empty_tree(self):
+        """Test flattening empty tree."""
+        flattened = self.orchestrator._flatten_dependency_tree({})
+        
+        self.assertEqual(flattened, [])
+    
+    def test_report_has_risk_level(self):
+        """Test that report includes risk level."""
+        result = self.orchestrator.run("numpy==1.24.0")
+        
+        risk_level = result['report']['summary']['risk_level']
+        self.assertIn(risk_level, ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'])
+    
+    def test_report_has_license_counts(self):
+        """Test that report includes license breakdown."""
+        result = self.orchestrator.run("numpy==1.24.0")
+        
+        license_counts = result['report']['summary']['license_counts']
+        self.assertIsInstance(license_counts, dict)
+    
+    def test_report_has_recommendations(self):
+        """Test that report includes recommendations."""
+        result = self.orchestrator.run("numpy==1.24.0")
+        
+        recommendations = result['report']['recommendations']
+        self.assertIsInstance(recommendations, list)
+    
+    def test_max_depth_limit(self):
+        """Test that max_depth parameter is used."""
+        orch_low = Orchestrator(max_depth=1)
+        orch_high = Orchestrator(max_depth=5)
+        
+        self.assertEqual(orch_low.dependency_crawler.max_depth, 1)
+        self.assertEqual(orch_high.dependency_crawler.max_depth, 5)
 
 
 if __name__ == '__main__':
