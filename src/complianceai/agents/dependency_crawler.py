@@ -189,6 +189,7 @@ class DependencyCrawler:
                     return {
                         "version": info.get("version"),
                         "license": info.get("license"),
+                        "classifiers": info.get("classifiers", []),
                         "dependencies": dependencies
                     }
                 else:
@@ -196,6 +197,7 @@ class DependencyCrawler:
                     return {
                         "version": version,
                         "license": None,
+                        "classifiers": [],
                         "dependencies": []
                     }
         except Exception as e:
@@ -203,6 +205,7 @@ class DependencyCrawler:
             return {
                 "version": version,
                 "license": None,
+                "classifiers": [],
                 "dependencies": []
             }
     
@@ -245,6 +248,7 @@ class DependencyCrawler:
                     return {
                         "version": data.get("version"),
                         "license": data.get("license"),
+                        "classifiers": [],
                         "dependencies": dependencies
                     }
                 else:
@@ -252,6 +256,7 @@ class DependencyCrawler:
                     return {
                         "version": version,
                         "license": None,
+                        "classifiers": [],
                         "dependencies": []
                     }
         except Exception as e:
@@ -259,5 +264,6 @@ class DependencyCrawler:
             return {
                 "version": version,
                 "license": None,
+                "classifiers": [],
                 "dependencies": []
             }

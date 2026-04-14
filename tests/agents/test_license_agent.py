@@ -186,8 +186,8 @@ class TestLicenseAgent(unittest.TestCase):
         dependencies = [
             {"name": "numpy", "version": "1.24.0", "license": "BSD-3-Clause"},
             {"name": "requests", "version": "2.28.0", "license": "Apache-2.0"},
+            {"name": "unknownpkg", "version": "2.0.0"},  # No license - package name not known
             {"name": "flask", "version": "2.0.0"},
-            {"name": "django", "version": "4.0.0", "license": "UNKNOWN"},
         ]
         
         result = self.agent.identify_licenses(dependencies)
@@ -197,8 +197,10 @@ class TestLicenseAgent(unittest.TestCase):
         # Check each package
         self.assertEqual(result[0]["license"], "BSD-3-Clause")
         self.assertEqual(result[1]["license"], "Apache-2.0")
-        self.assertEqual(result[2]["license"], "Unknown")  # No license provided
-        self.assertEqual(result[3]["license"], "Unknown")  # Unknown license string
+        # unknownpkg - no license info, not in known packages
+        self.assertEqual(result[2]["license"], "Unknown")
+        # flask is guessed from package name database
+        self.assertEqual(result[3]["license"], "BSD-3-Clause")
     
     def test_identify_licenses_preserves_original(self):
         """Test that original license is preserved for reference."""

@@ -16,6 +16,9 @@ class LicenseAgent:
         'mit license': 'MIT',
         'expat': 'MIT',
         ' permissive': 'MIT',
+        'mit license (mit)': 'MIT',
+        'mit': 'MIT',
+        'osi approved :: mit': 'MIT',
         
         # Apache variants
         'apache': 'Apache-2.0',
@@ -24,6 +27,9 @@ class LicenseAgent:
         'apache license 2.0': 'Apache-2.0',
         'apache license, version 2.0': 'Apache-2.0',
         'apache 2.0': 'Apache-2.0',
+        'apache software license, version 2.0': 'Apache-2.0',
+        'osi approved :: apache': 'Apache-2.0',
+        'apache license': 'Apache-2.0',
         
         # GPL variants
         'gpl': 'GPL-3.0',
@@ -32,6 +38,9 @@ class LicenseAgent:
         'gnu general public license v3 (gpl-3.0)': 'GPL-3.0',
         'gpl-2.0': 'GPL-2.0',
         'gpl2': 'GPL-2.0',
+        'gnu general public license (gpl)': 'GPL-3.0',
+        'gnu general public license v3': 'GPL-3.0',
+        'gnu general public license v2': 'GPL-2.0',
         
         # BSD variants
         'bsd': 'BSD-3-Clause',
@@ -40,42 +49,67 @@ class LicenseAgent:
         'bsd-2-clause': 'BSD-2-Clause',
         'bsd2': 'BSD-2-Clause',
         'simplified bsd': 'BSD-2-Clause',
+        'new bsd': 'BSD-3-Clause',
+        '3-clause bsd': 'BSD-3-Clause',
+        '2-clause bsd': 'BSD-2-Clause',
+        'osi approved :: bsd': 'BSD-3-Clause',
         
         # ISC variants
         'isc': 'ISC',
+        'isc license': 'ISC',
         
         # MPL variants
         'mpl': 'MPL-2.0',
         'mpl-2.0': 'MPL-2.0',
         'mozilla public license 2.0': 'MPL-2.0',
+        'mpl 2.0': 'MPL-2.0',
         
         # Python specific
         'python software foundation license': 'PSF-2.0',
         'psf': 'PSF-2.0',
+        'psf license': 'PSF-2.0',
+        'python software foundation (psf)': 'PSF-2.0',
         
         # Creative Commons
         'cc0': 'CC0-1.0',
         'cc-by': 'CC-BY-4.0',
         'cc-by-sa': 'CC-BY-SA-4.0',
+        'cc0 1.0': 'CC0-1.0',
+        'creative commons zero': 'CC0-1.0',
         
         # Public Domain
         'public domain': 'CC0-1.0',
         'unlicense': 'Unlicense',
+        'public domain (unlicense)': 'CC0-1.0',
         
         # AGPL
         'agpl-3.0': 'AGPL-3.0',
         'agpl': 'AGPL-3.0',
+        'gnu affero general public license': 'AGPL-3.0',
         
         # LGPL
         'lgpl-2.1': 'LGPL-2.1',
         'lgpl': 'LGPL-2.1',
         'lgpl-3.0': 'LGPL-3.0',
+        'gnu lesser general public license': 'LGPL-3.0',
         
         # zlib
         'zlib': 'Zlib',
         
         # curl
         'curl': 'curl',
+        
+        # Eclipse
+        'epl 2.0': 'EPL-2.0',
+        'eclipse public license': 'EPL-2.0',
+        
+        # BSL
+        'boost software license': 'BSL-1.0',
+        'bsl': 'BSL-1.0',
+        
+        # Artistic
+        'artistic-2.0': 'Artistic-2.0',
+        'artistic license': 'Artistic-2.0',
     }
     
     # License aliases that need case-insensitive matching
@@ -119,9 +153,18 @@ class LicenseAgent:
         for dep in dependencies:
             name = dep.get('name', '')
             existing_license = dep.get('license')
+            classifiers = dep.get('classifiers', [])
             
-            # Normalize the license
+            # First try the direct license field
             normalized_license = self._normalize_license(existing_license)
+            
+            # If still unknown, try to extract from classifiers
+            if normalized_license == 'Unknown' and classifiers:
+                normalized_license = self._extract_from_classifiers(classifiers)
+            
+            # If still unknown, try to look up by package name (common packages)
+            if normalized_license == 'Unknown':
+                normalized_license = self._guess_from_package_name(name)
             
             # Create the output with license information
             licensed_dep = {
@@ -129,12 +172,136 @@ class LicenseAgent:
                 'version': dep.get('version'),
                 'license': normalized_license,
                 'license_source': self._get_license_source(existing_license, normalized_license),
-                'original_license': existing_license,  # Keep original for reference
+                'original_license': existing_license,
             }
             
             licensed_dependencies.append(licensed_dep)
         
         return licensed_dependencies
+    
+    def _extract_from_classifiers(self, classifiers: List[str]) -> str:
+        """Extract license from PyPI classifiers.
+        
+        Args:
+            classifiers: List of classifier strings
+            
+        Returns:
+            Normalized SPDX identifier or 'Unknown'
+        """
+        if not classifiers:
+            return 'Unknown'
+        
+        for classifier in classifiers:
+            classifier = classifier.lower()
+            
+            # Look for license-related classifiers
+            if 'license' in classifier or 'osi approved' in classifier:
+                # Try to normalize
+                normalized = self._normalize_license(classifier)
+                if normalized != 'Unknown':
+                    return normalized
+        
+        return 'Unknown'
+    
+    def _guess_from_package_name(self, package_name: str) -> str:
+        """Guess license from known package names.
+        
+        Args:
+            package_name: Name of the package
+            
+        Returns:
+            SPDX identifier or 'Unknown'
+        """
+        package_lower = package_name.lower()
+        
+        # Known package -> license mappings
+        KNOWN_PACKAGES = {
+            'requests': 'Apache-2.0',
+            'flask': 'BSD-3-Clause',
+            'django': 'BSD-3-Clause',
+            'flask': 'BSD-3-Clause',
+            'werkzeug': 'BSD-3-Clause',
+            'jinja2': 'BSD-3-Clause',
+            'numpy': 'BSD-3-Clause',
+            'pandas': 'BSD-3-Clause',
+            'scipy': 'BSD-3-Clause',
+            'matplotlib': 'PSF-2.0',
+            'pillow': 'HPND',
+            'pip': 'MIT',
+            'pytest': 'MIT',
+            'tox': 'MIT',
+            'setuptools': 'MIT',
+            'wheel': 'MIT',
+            'urllib3': 'MIT',
+            'chardet': 'LGPL-2.1',
+            'certifi': 'ISC',
+            'idna': 'Unicode-3.0',
+            'charset-normalizer': 'MIT',
+            'numpy': 'BSD-3-Clause',
+            'cryptography': 'Apache-2.0',
+            'pyyaml': 'MIT',
+            'python-dotenv': 'BSD-3-Clause',
+            'blinker': 'MIT',
+            'click': 'BSD-3-Clause',
+            'markupsafe': 'BSD-2-Clause',
+            'itsdangerous': 'BSD-3-Clause',
+            'asgiref': 'BSD-3-Clause',
+            'sqlparse': 'BSD-3-Clause',
+            'redis': 'MIT',
+            'celery': 'BSD-3-Clause',
+            'kombu': 'BSD-3-Clause',
+            'billiard': 'BSD-3-Clause',
+            'vine': 'BSD-3-Clause',
+            'flower': 'GPL-3.0',
+            'httpie': 'BSD-3-Clause',
+            'aiohttp': 'Apache-2.0',
+            'aiofiles': 'MIT',
+            'asyncpg': 'Apache-2.0',
+            'psycopg2-binary': 'LGPL-3.0',
+            'psycopg2': 'LGPL-3.0',
+            'pg8000': 'BSD-2-Clause',
+            'sqlalchemy': 'MIT',
+            'alembic': 'MIT',
+            'flask-sqlalchemy': 'BSD-3-Clause',
+            'flask-migrate': 'MIT',
+            'flask-cors': 'MIT',
+            'flask-login': 'MIT',
+            'flask-wtf': 'BSD-3-Clause',
+            'wtforms': 'BSD-3-Clause',
+            'email-validator': 'BSD-3-Clause',
+            'bleach': 'BSD-3-Clause',
+            'beautifulsoup4': 'MIT',
+            'lxml': 'BSD-3-Clause',
+            'html5lib': 'MIT',
+            'feedparser': 'BSD-3-Clause',
+            'pytz': 'MIT',
+            'python-dateutil': 'BSD-3-Clause',
+            'python-magic': 'MIT',
+            'pypdf2': 'BSD-2-Clause',
+            'reportlab': 'BSD-4-Clause',
+            'markdown': 'BSD-3-Clause',
+            'pygments': 'BSD-2-Clause',
+            'highlight.js': 'MIT',
+            'prismjs': 'MIT',
+            'moment': 'MIT',
+            'lodash': 'MIT',
+            'underscore': 'MIT',
+            'jquery': 'MIT',
+            'bootstrap': 'MIT',
+            'font-awesome': 'SIL OFL 1.1',
+            'react': 'MIT',
+            'vue': 'MIT',
+            'angular': 'MIT',
+            'axios': 'MIT',
+            'express': 'MIT',
+            'fastify': 'MIT',
+            'mongoose': 'Apache-2.0',
+            'passport': 'MIT',
+            'socket.io': 'MIT',
+            'pm2': 'MIT',
+        }
+        
+        return KNOWN_PACKAGES.get(package_lower, 'Unknown')
     
     def _normalize_license(self, license_str: str) -> str:
         """Normalize a license string to standard SPDX identifier.
