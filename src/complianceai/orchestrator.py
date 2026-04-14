@@ -194,20 +194,19 @@ class Orchestrator:
         """Step 3: Identify licenses for dependencies.
         
         Args:
-            dependency_tree: Dictionary of dependencies
+            dependency_tree: Dictionary of dependencies from crawler
             
         Returns:
             List of dependencies with licenses
         """
-        flattened = self._flatten_dependency_tree(dependency_tree)
-        if not flattened:
+        if not dependency_tree:
             return []
         
         return self._safe_execute(
             "identify_licenses",
             self.license_agent.identify_licenses,
-            flattened,
-            default_return=flattened
+            dependency_tree,
+            default_return=[]
         )
     
     def _detect_conflicts(self, licensed_dependencies: List[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:

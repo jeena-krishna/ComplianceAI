@@ -143,11 +143,10 @@ class LicenseAgent:
         """Identify licenses for each dependency.
         
         Args:
-            dependencies: List of dictionaries with dependency information (from crawler)
-            OR a dictionary from crawler where keys are package names
+            dependencies: Dictionary from crawler where keys are package names.
             
         Returns:
-            List of dictionaries with normalized license information added
+            List of dictionaries with normalized license information.
         """
         licensed_dependencies = []
         
@@ -160,6 +159,8 @@ class LicenseAgent:
                     'version': info.get('version'),
                     'license': info.get('license'),
                     'classifiers': info.get('classifiers', []),
+                    'home_page': info.get('home_page'),
+                    'project_urls': info.get('project_urls', {}),
                 })
             dependencies = deps_list
         
