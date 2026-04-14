@@ -18,26 +18,30 @@ ComplianceAI helps you proactively identify these issues before they become prob
 ## Architecture
 
 ```
-    Input (file or text)
-           |
-           v
-    +-------------+
-    | Orchestrator |----> Compliance Report
-    +-------------+
-           |
-     +-----+-----+-----+-----+
-     v           v           v
-  +------+  +------+  +------+
-  |Parser|  |License|  |Conflict|
-  |Agent |  |Agent |  | Agent |
-  +------+  +------+  +------+
-     ^           ^           ^
-     +-----+-----+-----+-----+
-           |
-     +-------------+
-     |  Crawler   |
-     |   Agent  |
-     +-------------+
+    [Input: file or text]
+              |
+              v
+    +--------------------+
+    |    Orchestrator     |
+    +--------------------+
+              |
+      +--------+--------+
+      |        |        |
+      v        v        v
+   +-----+ +-----+ +-----+
+   |Parser| |License| |Conflict|
+   |Agent| | Agent | | Agent |
+   +-----+ +-----+ +-----+
+      |        |        |
+      +--------+--------+
+              |
+              v
+    +--------------------+
+    |    Report Agent    |
+    +--------------------+
+              |
+              v
+    [Compliance Report]
 ```
                     ┌─────────────────────┐
                     │       Input         │
