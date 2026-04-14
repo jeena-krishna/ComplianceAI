@@ -158,8 +158,27 @@ def display_report(result):
     else:
         for i, conflict in enumerate(conflicts, 1):
             severity = conflict.get("severity", "info")
-            pkg1 = conflict.get("package1", {})
-            pkg2 = conflict.get("package2", {})
+            
+            # Handle both field names (packages_1/packages_2 or legacy package1/package2)
+            pkgs1 = conflict.get("packages_1", conflict.get("package1", []))
+            pkgs2 = conflict.get("packages_2", conflict.get("package2", []))
+            
+            # Handle list or single item
+            if isinstance(pkgs1, list) and pkgs1:
+                first_pkg1 = pkgs1[0] if isinstance(pkgs1[0], dict) else pkgs1[0]
+                pkg1_name = first_pkg1.get('name') if isinstance(first_pkg1, dict) else str(first_pkg1)
+                pkg1_version = first_pkg1.get('version', '') if isinstance(first_pkg1, dict) else ''
+            else:
+                pkg1_name = str(pkgs1) if pkgs1 else 'N/A'
+                pkg1_version = ''
+            
+            if isinstance(pkgs2, list) and pkgs2:
+                first_pkg2 = pkgs2[0] if isinstance(pkgs2[0], dict) else pkgs2[0]
+                pkg2_name = first_pkg2.get('name') if isinstance(first_pkg2, dict) else str(first_pkg2)
+                pkg2_version = first_pkg2.get('version', '') if isinstance(first_pkg2, dict) else ''
+            else:
+                pkg2_name = str(pkgs2) if pkgs2 else 'N/A'
+                pkg2_version = ''
 
             severity_label = severity.upper()
             if severity == "critical":
@@ -190,11 +209,11 @@ def display_report(result):
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.markdown(f"**{pkg1.get('name')}** ({pkg1.get('version', 'unknown')})")
-                    st.caption(f"License: {pkg1.get('license', 'Unknown')}")
+                    st.markdown(f"**{pkg1_name}** ({pkg1_version or 'unknown'})")
+                    st.caption(f"License: {conflict.get('license_1', 'Unknown')}")
                 with c2:
-                    st.markdown(f"**{pkg2.get('name')}** ({pkg2.get('version', 'unknown')})")
-                    st.caption(f"License: {pkg2.get('license', 'Unknown')}")
+                    st.markdown(f"**{pkg2_name}** ({pkg2_version or 'unknown'})")
+                    st.caption(f"License: {conflict.get('license_2', 'Unknown')}")
 
                 if conflict.get("recommendation"):
                     st.caption(f"💡 Recommendation: {conflict.get('recommendation')}")
