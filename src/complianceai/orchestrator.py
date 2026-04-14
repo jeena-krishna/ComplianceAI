@@ -62,6 +62,18 @@ class Orchestrator:
         self.errors = []
     
     def run(self, input_data: str, output_format: str = 'dict') -> Dict[str, Any]:
+        """Run the full compliance analysis pipeline synchronously.
+        
+        Args:
+            input_data: File path to dependency file or raw text
+            output_format: Output format - 'dict', 'text', or 'json'
+            
+        Returns:
+            Dictionary containing analysis results
+        """
+        return asyncio.run(self._run_async(input_data, output_format))
+    
+    async def _run_async(self, input_data: str, output_format: str = 'dict') -> Dict[str, Any]:
         """Run the full compliance analysis pipeline.
         
         Args:
@@ -79,10 +91,9 @@ class Orchestrator:
         if initial_dependencies is None:
             raise DependencyParseError(f"Failed to parse dependencies from input")
         
-        # Step 2: Crawl dependency tree
-        dependency_tree = self._crawl_dependencies(initial_dependencies)
+        # Step 2: Crawl dependency tree (async)
+        dependency_tree = await self._crawl_dependencies(initial_dependencies)
         if dependency_tree is None:
-            # Use raw dependencies if crawl fails
             dependency_tree = {}
         
         # Step 3: Identify licenses
@@ -163,7 +174,7 @@ class Orchestrator:
             default_return=[]
         )
     
-    def _crawl_dependencies(self, dependencies: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    async def _crawl_dependencies(self, dependencies: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Step 2: Crawl dependency tree.
         
         Args:
@@ -176,9 +187,7 @@ class Orchestrator:
             return {}
         
         try:
-            return asyncio.run(
-                self.dependency_crawler.crawl_dependencies(dependencies)
-            )
+            return await self.dependency_crawler.crawl_dependencies(dependencies)
         except Exception as e:
             error_msg = f"crawl_dependencies: {str(e)}"
             logger.error(error_msg)
@@ -186,12 +195,10 @@ class Orchestrator:
                 "step": "crawl_dependencies",
                 "error": str(e)
             })
-            # Return empty tree
             return {}
         finally:
-            # Clean up the crawler session
             try:
-                asyncio.run(self.dependency_crawler.close())
+                await self.dependency_crawler.close()
             except Exception:
                 pass
     
