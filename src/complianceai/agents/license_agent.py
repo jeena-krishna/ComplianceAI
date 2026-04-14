@@ -317,6 +317,20 @@ class LicenseAgent:
             'passport': 'MIT',
             'socket.io': 'MIT',
             'pm2': 'MIT',
+            
+            # Common modern packages
+            'openai': 'Apache-2.0',
+            'httpx': 'BSD-3-Clause',
+            'httpcore': 'BSD-3-Clause',
+            'anyio': 'MIT',
+            'sniffio': 'MIT',
+            'h11': 'MIT',
+            'pydantic': 'MIT',
+            'typing-extensions': 'PSF-2.0',
+            'annotated-types': 'MIT',
+            'distro': 'Apache-2.0',
+            'jiter': 'MIT',
+            'tqdm': 'MIT',
         }
         
         return KNOWN_PACKAGES.get(package_lower, 'Unknown')
