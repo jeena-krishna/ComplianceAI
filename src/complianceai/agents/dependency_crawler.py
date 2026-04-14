@@ -159,9 +159,12 @@ class DependencyCrawler:
             - "requests>=2.0.0" -> "requests"
             - "package[extra]>=1.0" -> "package"
             - "importlib-metadata; python_version<3.8" -> "importlib-metadata"
+            - "pillow (>=9.0)" -> "pillow"
+            - "soupsieve (1.9)" -> "soupsieve"
         """
         import re
-        cleaned = re.split(r'[<>=!~;\[,]', name)[0]
+        # Remove version specifiers, extras, semicolons, parentheses, and everything after
+        cleaned = re.split(r'[<>=!~;\[,\(\s]', name)[0]
         cleaned = cleaned.strip()
         return cleaned
     
@@ -237,13 +240,6 @@ class DependencyCrawler:
                     if pattern in classifier:
                         return license
         return None
-    
-    def _clean_package_name(self, name: str) -> str:
-        """Clean package name by removing version specifiers and extras."""
-        import re
-        cleaned = re.split(r'[<>=!~;\[,]', name)[0]
-        cleaned = cleaned.strip()
-        return cleaned
     
     async def _fetch_pypi_package_info(self, name: str, version: str) -> Dict[str, Any]:
         """Fetch package information from PyPI.
