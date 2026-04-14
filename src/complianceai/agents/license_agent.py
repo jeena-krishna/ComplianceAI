@@ -331,6 +331,11 @@ class LicenseAgent:
             'distro': 'Apache-2.0',
             'jiter': 'MIT',
             'tqdm': 'MIT',
+            'pypdf': 'BSD-3-Clause',
+            'pypdf2': 'BSD-3-Clause',
+            'pdfminer': 'MIT',
+            'pdfplumber': 'MIT',
+            'camelot-py': 'MIT',
         }
         
         return KNOWN_PACKAGES.get(package_lower, 'Unknown')
