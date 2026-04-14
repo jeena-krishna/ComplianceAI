@@ -8,5 +8,8 @@ mypy>=0.800
 # Production dependencies for the crawler
 aiohttp>=3.0
 
+# Async support for Streamlit
+nest-asyncio>=1.5
+
 # Web UI
 streamlit>=1.28

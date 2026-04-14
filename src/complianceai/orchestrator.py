@@ -71,7 +71,13 @@ class Orchestrator:
         Returns:
             Dictionary containing analysis results
         """
-        return asyncio.run(self._run_async(input_data, output_format))
+        try:
+            asyncio.get_running_loop()
+            import nest_asyncio
+            nest_asyncio.apply()
+            return asyncio.run(self._run_async(input_data, output_format))
+        except RuntimeError:
+            return asyncio.run(self._run_async(input_data, output_format))
     
     async def _run_async(self, input_data: str, output_format: str = 'dict') -> Dict[str, Any]:
         """Run the full compliance analysis pipeline.
