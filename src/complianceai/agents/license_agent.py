@@ -230,14 +230,15 @@ class LicenseAgent:
         Returns:
             SPDX identifier or 'Unknown'
         """
+        # Normalize: replace hyphens/underscores for lookup
+        package_normalized = package_name.replace('-', '_').lower()
         package_lower = package_name.lower()
         
-        # Known package -> license mappings
+        # Known package -> license mappings (include both hyphen and underscore variants)
         KNOWN_PACKAGES = {
             'requests': 'Apache-2.0',
             'flask': 'BSD-3-Clause',
             'django': 'BSD-3-Clause',
-            'flask': 'BSD-3-Clause',
             'werkzeug': 'BSD-3-Clause',
             'jinja2': 'BSD-3-Clause',
             'numpy': 'BSD-3-Clause',
@@ -318,7 +319,7 @@ class LicenseAgent:
             'socket.io': 'MIT',
             'pm2': 'MIT',
             
-            # Common modern packages
+            # Common modern packages (include both variants)
             'openai': 'Apache-2.0',
             'httpx': 'BSD-3-Clause',
             'httpcore': 'BSD-3-Clause',
@@ -326,7 +327,9 @@ class LicenseAgent:
             'sniffio': 'MIT',
             'h11': 'MIT',
             'pydantic': 'MIT',
+            'typing_extensions': 'PSF-2.0',
             'typing-extensions': 'PSF-2.0',
+            'annotated_types': 'MIT',
             'annotated-types': 'MIT',
             'distro': 'Apache-2.0',
             'jiter': 'MIT',
@@ -335,10 +338,34 @@ class LicenseAgent:
             'pypdf2': 'BSD-3-Clause',
             'pdfminer': 'MIT',
             'pdfplumber': 'MIT',
+            'camelot_py': 'MIT',
             'camelot-py': 'MIT',
         }
         
-        return KNOWN_PACKAGES.get(package_lower, 'Unknown')
+        # Try normalized (underscores), then original, then common patterns
+        if package_normalized in KNOWN_PACKAGES:
+            return KNOWN_PACKAGES[package_normalized]
+        if package_lower in KNOWN_PACKAGES:
+            return KNOWN_PACKAGES[package_lower]
+        
+        # Common patterns for unknown packages
+        common_patterns = {
+            'typing': 'PSF-2.0',
+            'setuptools': 'MIT',
+            'pip': 'MIT',
+            'wheel': 'MIT',
+            'test': 'MIT',
+            'pytest': 'MIT',
+            'pyproject': 'MIT',
+            'build': 'MIT',
+            'virtualenv': 'MIT',
+            'packaging': 'Apache-2.0',
+        }
+        for pattern, license in common_patterns.items():
+            if pattern in package_lower:
+                return license
+        
+        return 'Unknown'
     
     def _normalize_license(self, license_str: str) -> str:
         """Normalize a license string to standard SPDX identifier.

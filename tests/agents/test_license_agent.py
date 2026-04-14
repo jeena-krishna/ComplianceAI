@@ -45,7 +45,7 @@ class TestLicenseAgent(unittest.TestCase):
     def test_identify_licenses_without_license(self):
         """Test identifying licenses for packages without license info."""
         dependencies = [
-            {"name": "test-package", "version": "1.0.0"},
+            {"name": "unknown-package-xyz", "version": "1.0.0"},
         ]
         
         result = self.agent.identify_licenses(dependencies)
