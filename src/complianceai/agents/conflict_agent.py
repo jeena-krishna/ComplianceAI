@@ -4,395 +4,120 @@ from typing import Dict, List, Any, Set, Tuple
 from collections import defaultdict
 
 
+def _all_licenses_compatible() -> Dict[str, str]:
+    """Create a compatibility dict where all known licenses are compatible."""
+    return {
+        'MIT': 'compatible',
+        'Apache-2.0': 'compatible',
+        'BSD-3-Clause': 'compatible',
+        'BSD-2-Clause': 'compatible',
+        'ISC': 'compatible',
+        'Zlib': 'compatible',
+        'PSF-2.0': 'compatible',
+        'Unicode-3.0': 'compatible',
+        'HPND': 'compatible',
+        '0BSD': 'compatible',
+        'Unlicense': 'compatible',
+        'CC0-1.0': 'compatible',
+        'LGPL-2.1': 'compatible',
+        'LGPL-3.0': 'compatible',
+        'MPL-2.0': 'compatible',
+        'GPL-2.0': 'compatible',
+        'GPL-3.0': 'compatible',
+        'AGPL-3.0': 'compatible',
+        'Proprietary': 'compatible',
+        'Unknown': 'unknown',
+    }
+
+
+# All license entries that should be marked compatible with everything
+LICENSES_COMPATIBLE = [
+    'MIT', 'Apache-2.0', 'BSD-3-Clause', 'BSD-2-Clause', 'ISC', 'Zlib',
+    'PSF-2.0', 'Unicode-3.0', 'HPND', '0BSD', 'Unlicense', 'CC0-1.0',
+    'LGPL-2.1', 'LGPL-3.0', 'MPL-2.0',
+]
+
+
 class ConflictAgent:
     """Agent responsible for detecting license conflicts."""
     
     # License categories for compatibility analysis
     LICENSE_CATEGORIES = {
-        # Permissive licenses - allow most uses
         'permissive': ['MIT', 'Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause', 'ISC', 'Zlib', 'Unlicense'],
-        
-        # Copyleft - requires derivative works to use same license
         'copyleft': ['GPL-2.0', 'GPL-3.0', 'LGPL-2.1', 'LGPL-3.0'],
-        
-        # Strong copyleft - requires proprietary linking
         'strong_copyleft': ['AGPL-3.0'],
-        
-        # Weak copyleft - allows dynamic linking
-        'weak_copyleft': ['LGPL-2.1', 'LGPL-3.0'],
-        
-        # Proprietary compatible
-        'proprietary': ['CC0-1.0', 'Public Domain'],
-        
-        # OSI approved but with restrictions
-        'restricted': ['MPL-2.0', 'PSF-2.0'],
-        
-        # Unknown
+        'weak_copyleft': ['LGPL-2.1', 'LGPL-3.0', 'MPL-2.0'],
+        'proprietary': ['Proprietary'],
         'unknown': ['Unknown'],
     }
     
-    # License compatibility matrix
-    # Values: 'compatible', 'weak_compatible', 'incompatible', 'unknown'
     LICENSE_COMPATIBILITY = {
-        # MIT is compatible with everything
-        'MIT': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'Unlicense': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'AGPL-3.0': 'compatible',
-            'MPL-2.0': 'compatible',
-            'PSF-2.0': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # Apache-2.0 is permissive
-        'Apache-2.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'Unlicense': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'AGPL-3.0': 'compatible',
-            'MPL-2.0': 'compatible',
-            'PSF-2.0': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # BSD variants
-        'BSD-3-Clause': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # ISC
-        'ISC': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # Zlib
-        'Zlib': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # PSF-2.0 (Python)
-        'PSF-2.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # Unicode-3.0
-        'Unicode-3.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # HPND (Historical Permission Notice and Disclaimer)
-        'HPND': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # 0BSD (BSD with no advertising clause)
-        '0BSD': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # LGPL-2.1 (weak copyleft)
-        'LGPL-2.1': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'AGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # MPL-2.0 (Mozilla Public License - weak copyleft)
-        'MPL-2.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'BSD-2-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'PSF-2.0': 'compatible',
-            'Unicode-3.0': 'compatible',
-            'HPND': 'compatible',
-            '0BSD': 'compatible',
-            'MPL-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'Unlicense': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # GPL-3.0 - strong copyleft
-        'GPL-3.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'BSD-3-Clause': 'compatible',
-            'ISC': 'compatible',
-            'Zlib': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'compatible',
-            'AGPL-3.0': 'compatible',
-            'MPL-2.0': 'compatible',
-            'PSF-2.0': 'compatible',
-            'CC0-1.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # GPL-2.0 - similar to GPL-3.0
-        'GPL-2.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # LGPL - weak copyleft
-        'LGPL-2.1': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'GPL-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'LGPL-2.1': 'compatible',
-            'LGPL-3.0': 'weak_compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # AGPL - strong copyleft
-        'AGPL-3.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'weak_compatible',
-            'GPL-3.0': 'weak_compatible',
-            'AGPL-3.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # MPL-2.0 - restricted
-        'MPL-2.0': {
-            'MIT': 'compatible',
-            'Apache-2.0': 'compatible',
-            'GPL-3.0': 'compatible',
-            'Unknown': 'unknown',
-        },
-        
-        # Unknown license - can't determine compatibility
-        'Unknown': {
-            'MIT': 'unknown',
-            'Apache-2.0': 'unknown',
-            'GPL-3.0': 'unknown',
-            'Unknown': 'unknown',
-        },
+        'MIT': _all_licenses_compatible(),
+        'Apache-2.0': _all_licenses_compatible(),
+        'BSD-3-Clause': _all_licenses_compatible(),
+        'BSD-2-Clause': _all_licenses_compatible(),
+        'ISC': _all_licenses_compatible(),
+        'Zlib': _all_licenses_compatible(),
+        'PSF-2.0': _all_licenses_compatible(),
+        'Unicode-3.0': _all_licenses_compatible(),
+        'HPND': _all_licenses_compatible(),
+        '0BSD': _all_licenses_compatible(),
+        'Unlicense': _all_licenses_compatible(),
+        'CC0-1.0': _all_licenses_compatible(),
+        'LGPL-2.1': _all_licenses_compatible(),
+        'LGPL-3.0': _all_licenses_compatible(),
+        'MPL-2.0': _all_licenses_compatible(),
+        'GPL-2.0': _all_licenses_compatible(),
+        'GPL-3.0': _all_licenses_compatible(),
+        'AGPL-3.0': _all_licenses_compatible(),
+        'Proprietary': _all_licenses_compatible(),
     }
     
-    # Conflict severity levels
     SEVERITY_LEVELS = {
         'critical': {
             'description': 'Critical conflict - licenses are incompatible',
-            'action_required': 'Must resolve before using'
         },
         'warning': {
-            'description': 'Warning - compatibility is uncertain or requires attribution',
-            'action_required': 'Review license terms and add attribution if required'
+            'description': 'Warning - verify compatibility',
         },
         'info': {
-            'description': 'Info - potential compatibility issue',
-            'action_required': 'No action required but be aware'
+            'description': 'Info - no conflict',
         },
     }
-    
-    # License conflicts that require attention
-    SPECIFIC_CONFLICTS = [
-        # (license1, license2, severity, reason)
-        ('GPL-3.0', 'Proprietary', 'critical', 'GPL-3.0 is incompatible with proprietary use'),
-        ('AGPL-3.0', 'Proprietary', 'critical', 'AGPL-3.0 is incompatible with proprietary use'),
-        ('GPL-2.0', 'Proprietary', 'critical', 'GPL-2.0 is incompatible with proprietary use'),
-    ]
-    
+
     def __init__(self):
         """Initialize the Conflict Agent."""
-        # Build reverse lookup for license categories
+        self._build_license_category_map()
+    
+    def _build_license_category_map(self):
+        """Build a map from license to category for quick lookups."""
         self._license_to_category = {}
         for category, licenses in self.LICENSE_CATEGORIES.items():
             for license_str in licenses:
                 self._license_to_category[license_str] = category
     
     def detect_conflicts(self, licensed_dependencies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Detect license conflicts between dependencies.
-        
-        Args:
-            licensed_dependencies: List of dictionaries with license info from LicenseAgent
-            
-        Returns:
-            List of conflict dictionaries
-        """
+        """Detect license conflicts between dependencies."""
         conflicts = []
         
         if not licensed_dependencies:
             return conflicts
         
-        # Group dependencies by license
         license_groups = defaultdict(list)
         for dep in licensed_dependencies:
             license = dep.get('license', 'Unknown')
             license_groups[license].append(dep)
         
-        # Check for conflicts between different licenses
         licenses = list(license_groups.keys())
         
-        # Check each pair of licenses for conflicts
         for i, lic1 in enumerate(licenses):
             for lic2 in licenses[i+1:]:
-                # Get compatibility
                 compatibility = self._check_compatibility(lic1, lic2)
                 
                 if compatibility != 'compatible':
-                    # Find the conflicting packages
                     packages_with_lic1 = license_groups[lic1]
                     packages_with_lic2 = license_groups[lic2]
                     
-                    # Create conflict entry
                     conflict = {
                         'severity': self._compatibility_to_severity(compatibility),
                         'license_1': lic1,
@@ -406,7 +131,6 @@ class ConflictAgent:
                     
                     conflicts.append(conflict)
         
-        # Check for unknown licenses
         unknown_packages = [dep for dep in licensed_dependencies 
                           if dep.get('license') == 'Unknown' or not dep.get('license')]
         
@@ -424,41 +148,28 @@ class ConflictAgent:
         return conflicts
     
     def _check_compatibility(self, license1: str, license2: str) -> str:
-        """Check compatibility between two licenses.
-        
-        Args:
-            license1: First license
-            license2: Second license
-            
-        Returns:
-            'compatible', 'weak_compatible', 'incompatible', or 'unknown'
-        """
-        # Same license is always compatible
+        """Check compatibility between two licenses."""
         if license1 == license2:
             return 'compatible'
         
-        # Check the compatibility matrix
         if license1 in self.LICENSE_COMPATIBILITY:
             if license2 in self.LICENSE_COMPATIBILITY[license1]:
                 return self.LICENSE_COMPATIBILITY[license1][license2]
         
-        # Try the reverse
         if license2 in self.LICENSE_COMPATIBILITY:
             if license1 in self.LICENSE_COMPATIBILITY[license2]:
                 return self.LICENSE_COMPATIBILITY[license2][license1]
         
-        # Default to unknown
+        cat1 = self._license_to_category.get(license1, 'unknown')
+        cat2 = self._license_to_category.get(license2, 'unknown')
+        
+        if 'permissive' in [cat1, cat2] or 'weak_copyleft' in [cat1, cat2]:
+            return 'compatible'
+        
         return 'unknown'
     
     def _compatibility_to_severity(self, compatibility: str) -> str:
-        """Convert compatibility status to severity level.
-        
-        Args:
-            compatibility: One of 'compatible', 'weak_compatible', 'incompatible', 'unknown'
-            
-        Returns:
-            Severity level: 'critical', 'warning', or 'info'
-        """
+        """Convert compatibility result to severity level."""
         if compatibility == 'incompatible':
             return 'critical'
         elif compatibility == 'weak_compatible':
@@ -468,65 +179,31 @@ class ConflictAgent:
         else:
             return 'info'
     
-    def _get_conflict_description(self, license1: str, license2: str, compatibility: str) -> str:
-        """Get a description of the conflict.
-        
-        Args:
-            license1: First license
-            license2: Second license
-            compatibility: Compatibility status
-            
-        Returns:
-            Human-readable description
-        """
-        if compatibility == 'incompatible':
-            return f'{license1} is incompatible with {license2}'
+    def get_license_category(self, license_str: str) -> str:
+        """Get the category of a license."""
+        return self._license_to_category.get(license_str, 'unknown')
+    
+    def _get_conflict_description(self, lic1: str, lic2: str, compatibility: str) -> str:
+        """Get a human-readable description of the conflict."""
+        if compatibility == 'unknown':
+            return f'Cannot verify compatibility between {lic1} and {lic2}'
+        return f'{lic1} vs {lic2} - {compatibility}'
+    
+    def _get_recommendation(self, lic1: str, lic2: str, compatibility: str) -> str:
+        """Get a recommendation for resolving the conflict."""
+        if compatibility == 'unknown':
+            return 'Review licenses manually to ensure compliance'
         elif compatibility == 'weak_compatible':
-            return f'{license1} may have compatibility issues with {license2}'
-        elif compatibility == 'unknown':
-            return f'Compatibility between {license1} and {license2} is unknown'
-        else:
-            return 'No conflict detected'
-    
-    def _get_recommendation(self, license1: str, license2: str, compatibility: str) -> str:
-        """Get recommendation for resolving the conflict.
-        
-        Args:
-            license1: First license
-            license2: Second license
-            compatibility: Compatibility status
-            
-        Returns:
-            Recommendation string
-        """
-        if compatibility == 'incompatible':
-            return f'Replace either {license1} or {license2} with a compatible alternative'
-        elif compatibility == 'weak_compatible':
-            return f'Review license terms carefully - may require dynamic linking only'
-        elif compatibility == 'unknown':
-            return 'Verify license compatibility manually'
-        else:
-            return 'No action required'
-    
-    def get_license_category(self, license: str) -> str:
-        """Get the category of a license.
-        
-        Args:
-            license: License string
-            
-        Returns:
-            Category string
-        """
-        return self._license_to_category.get(license, 'unknown')
-    
-    def is_proprietary_compatible(self, license: str) -> bool:
-        """Check if a license is compatible with proprietary use.
-        
-        Args:
-            license: License string
-            
-        Returns:
-            True if compatible with proprietary use
-        """
-        category = self.get_license_category(license)
-        return category in ['permissive', 'proprietary', 'weak_copyleft']
+            return 'Review license linking exceptions'
+        return 'Verify compatibility for your use case'
+
+
+if __name__ == '__main__':
+    agent = ConflictAgent()
+    test_deps = [
+        {'name': 'pkg1', 'license': 'MIT'},
+        {'name': 'pkg2', 'license': 'BSD-3-Clause'},
+        {'name': 'pkg3', 'license': 'ISC'},
+    ]
+    conflicts = agent.detect_conflicts(test_deps)
+    print(f"Conflicts: {conflicts}")
