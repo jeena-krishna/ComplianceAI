@@ -179,6 +179,12 @@ class LicenseAgent:
             if normalized_license == 'Unknown':
                 normalized_license = self._guess_from_package_name(name)
             
+            # If still unknown, try GitHub fallback
+            if normalized_license == 'Unknown':
+                github_url = dep.get('home_page') or dep.get('project_urls', {}).get('Repository')
+                if github_url:
+                    normalized_license = self._lookup_github_license(github_url)
+            
             # Create the output with license information
             licensed_dep = {
                 'name': name,
@@ -398,6 +404,98 @@ class LicenseAgent:
                 return spdx_id
         
         return None
+    
+    def _lookup_github_license(self, url: str) -> str:
+        """Look up license from GitHub repository.
+        
+        Args:
+            url: GitHub URL from PyPI package info
+            
+        Returns:
+            Normalized SPDX license or 'Unknown'
+        """
+        import re
+        from urllib.parse import urlparse
+        
+        parsed = urlparse(url)
+        path_parts = parsed.path.strip('/').split('/')
+        
+        if len(path_parts) < 2:
+            return 'Unknown'
+        
+        owner = path_parts[0]
+        repo_name = path_parts[1].replace('.git', '')
+        
+        license_files = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING', 'COPYING.md']
+        
+        for license_file in license_files:
+            content = self._fetch_github_file(owner, repo_name, license_file)
+            if content:
+                detected = self._detect_license_from_content(content)
+                if detected != 'Unknown':
+                    return detected
+        
+        return 'Unknown'
+    
+    def _fetch_github_file(self, owner: str, repo: str, file_path: str) -> str:
+        """Fetch a file from GitHub API.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            file_path: Path to the file
+            
+        Returns:
+            File content or empty string
+        """
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}"
+        
+        try:
+            response = requests.get(api_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'content' in data:
+                    import base64
+                    return base64.b64decode(data['content']).decode('utf-8')
+            return ''
+        except Exception:
+            return ''
+    
+    def _detect_license_from_content(self, content: str) -> str:
+        """Detect license from LICENSE file content.
+        
+        Args:
+            content: Content of LICENSE file
+            
+        Returns:
+            Normalized SPDX identifier or 'Unknown'
+        """
+        content_lower = content.lower()
+        
+        patterns = [
+            (r'mit\s*license', 'MIT'),
+            (r'apache\s*license', 'Apache-2.0'),
+            (r'gnu\s*general\s*public\s*license\s*v?3', 'GPL-3.0'),
+            (r'gnu\s*general\s*public\s*license\s*v?2', 'GPL-2.0'),
+            (r'bsd\s*3-?clause', 'BSD-3-Clause'),
+            (r'bsd\s*2-?clause', 'BSD-2-Clause'),
+            (r'isc\s*license', 'ISC'),
+            (r'mozilla\s*public\s*license', 'MPL-2.0'),
+            (r'gnu\s*lesser\s*general\s*public\s*license', 'LGPL-3.0'),
+            (r'gnu\s*affero\s*general\s*public\s*license', 'AGPL-3.0'),
+            (r'creative\s*commons\s*zero', 'CC0-1.0'),
+            (r'public\s*domain', 'Unlicense'),
+            (r'zlib\s*license', 'Zlib'),
+            (r'boost\s*software\s*license', 'BSL-1.0'),
+            (r'eclipse\s*public\s*license', 'EPL-2.0'),
+            (r'artistic\s*license', 'Artistic-2.0'),
+        ]
+        
+        for pattern, spdx_id in patterns:
+            if re.search(pattern, content_lower):
+                return spdx_id
+        
+        return 'Unknown'
     
     def _get_license_source(self, original_license: str, normalized_license: str) -> str:
         """Determine where the license came from.

@@ -214,5 +214,57 @@ class TestLicenseAgent(unittest.TestCase):
         self.assertEqual(result[0]["license"], "MIT")  # Normalized
 
 
+class TestGitHubLicenseDetection(unittest.TestCase):
+    """Test cases for GitHub license fallback."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.agent = LicenseAgent()
+
+    def test_detect_license_from_content_mit(self):
+        """Test detecting MIT license from content."""
+        content = "MIT License\n\nPermission is hereby granted..."
+        result = self.agent._detect_license_from_content(content)
+        self.assertEqual(result, "MIT")
+
+    def test_detect_license_from_content_apache(self):
+        """Test detecting Apache license from content."""
+        content = "Apache License, Version 2.0\n\nLicensed under the Apache License..."
+        result = self.agent._detect_license_from_content(content)
+        self.assertEqual(result, "Apache-2.0")
+
+    def test_detect_license_from_content_gpl(self):
+        """Test detecting GPL license from content."""
+        content = "GNU General Public License v3"
+        result = self.agent._detect_license_from_content(content)
+        self.assertEqual(result, "GPL-3.0")
+
+    def test_detect_license_from_content_bsd(self):
+        """Test detecting BSD license from content."""
+        content = "BSD 3-Clause License"
+        result = self.agent._detect_license_from_content(content)
+        self.assertEqual(result, "BSD-3-Clause")
+
+    def test_detect_license_from_content_unknown(self):
+        """Test unknown content returns Unknown."""
+        content = "Some random text without license info"
+        result = self.agent._detect_license_from_content(content)
+        self.assertEqual(result, "Unknown")
+
+    def test_lookup_github_license_none(self):
+        """Test invalid GitHub URL returns Unknown."""
+        result = self.agent._lookup_github_license("https://example.com/notgithub")
+        self.assertEqual(result, "Unknown")
+
+    def test_identify_licenses_with_github_fallback(self):
+        """Test GitHub fallback when PyPI license is unknown."""
+        dependencies = [
+            {'name': 'unknown-pkg', 'license': None, 'home_page': 'https://github.com owner/repo'},
+        ]
+        
+        result = self.agent.identify_licenses(dependencies)
+        self.assertIsInstance(result, list)
+
+
 if __name__ == '__main__':
     unittest.main()
