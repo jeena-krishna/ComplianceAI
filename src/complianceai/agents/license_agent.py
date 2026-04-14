@@ -23,6 +23,7 @@ class LicenseAgent:
         'apache2': 'Apache-2.0',
         'apache license 2.0': 'Apache-2.0',
         'apache license, version 2.0': 'Apache-2.0',
+        'apache 2.0': 'Apache-2.0',
         
         # GPL variants
         'gpl': 'GPL-3.0',

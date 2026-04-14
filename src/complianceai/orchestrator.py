@@ -258,13 +258,14 @@ class Orchestrator:
             tree: The dependency tree from the crawler
             
         Returns:
-            List of dictionaries with package name and version
+            List of dictionaries with package name, version, and license
         """
         flattened = []
         for name, info in tree.items():
             flattened.append({
                 "name": name,
-                "version": info.get("version")
+                "version": info.get("version"),
+                "license": info.get("license"),
             })
         return flattened
     

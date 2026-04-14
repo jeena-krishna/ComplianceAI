@@ -102,7 +102,14 @@ celery>=5.0""", language="text")
 
 
 def display_report(result):
-    dependencies = result.get("dependencies", {})
+    deps_raw = result.get("dependencies", {})
+    
+    # Handle both dict and list formats
+    if isinstance(deps_raw, list):
+        dependencies = {d.get("name", "unknown"): d for d in deps_raw}
+    else:
+        dependencies = deps_raw
+    
     conflicts = result.get("conflicts", [])
     report = result.get("report", {})
 
@@ -189,12 +196,20 @@ def display_report(result):
 
     if dependencies:
         dep_data = []
-        for name, info in dependencies.items():
-            dep_data.append({
-                "Package": name,
-                "Version": info.get("version", "unknown"),
-                "License": info.get("license", "Unknown"),
-            })
+        if isinstance(dependencies, dict):
+            for name, info in dependencies.items():
+                dep_data.append({
+                    "Package": name,
+                    "Version": info.get("version", "unknown") if isinstance(info, dict) else "unknown",
+                    "License": info.get("license", "Unknown") if isinstance(info, dict) else "Unknown",
+                })
+        else:
+            for dep in dependencies:
+                dep_data.append({
+                    "Package": dep.get("name", "unknown"),
+                    "Version": dep.get("version", "unknown"),
+                    "License": dep.get("license", "Unknown"),
+                })
 
         st.dataframe(
             dep_data,
