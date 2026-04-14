@@ -4,3 +4,6 @@ pytest-cov>=2.0
 black>=21.0
 flake8>=3.0
 mypy>=0.800
+
+# Production dependencies for the crawler
+aiohttp>=3.0
