@@ -275,17 +275,6 @@ def display_report(result):
             )
             st.caption("These packages need manual license verification.")
 
-        st.dataframe(
-            dep_data,
-            column_config={
-                "Package": st.column_config.TextColumn("Package", width="medium"),
-                "Version": st.column_config.TextColumn("Version", width="small"),
-                "License": st.column_config.TextColumn("License", width="small"),
-            },
-            hide_index=True,
-            use_container_width=True,
-        )
-
     errors = result.get("errors")
     if errors:
         with st.expander("View errors"):
