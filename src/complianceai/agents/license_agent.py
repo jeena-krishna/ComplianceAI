@@ -139,16 +139,29 @@ class LicenseAgent:
         for key, value in self.COMMON_LICENSE_ALIASES.items():
             self._license_lookup[key.lower()] = value
     
-    def identify_licenses(self, dependencies: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def identify_licenses(self, dependencies) -> List[Dict[str, Any]]:
         """Identify licenses for each dependency.
         
         Args:
             dependencies: List of dictionaries with dependency information (from crawler)
+            OR a dictionary from crawler where keys are package names
             
         Returns:
             List of dictionaries with normalized license information added
         """
         licensed_dependencies = []
+        
+        # Handle dictionary format from crawler
+        if isinstance(dependencies, dict):
+            deps_list = []
+            for name, info in dependencies.items():
+                deps_list.append({
+                    'name': name,
+                    'version': info.get('version'),
+                    'license': info.get('license'),
+                    'classifiers': info.get('classifiers', []),
+                })
+            dependencies = deps_list
         
         for dep in dependencies:
             name = dep.get('name', '')
