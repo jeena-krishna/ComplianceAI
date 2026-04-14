@@ -283,17 +283,19 @@ class DependencyCrawler:
                             
                             dependencies.append((dep_name, version_constraint))
                     
-                    # Extract license from three sources in priority order:
-                    # 1. license field directly
-                    # 2. license_expression field (newer PyPI field with SPDX)
+                    # Extract license from four sources in priority order:
+                    # 1. license_expression (newest, most reliable)
+                    # 2. license (common)
                     # 3. classifiers (look for "License ::" prefix)
-                    raw_license = info.get("license")
+                    # 4. If all empty, mark as Unknown
+                    raw_license = info.get("license_expression")
                     if not raw_license:
-                        # Try license_expression field
-                        raw_license = info.get("license_expression")
+                        raw_license = info.get("license")
                     if not raw_license:
-                        # Try classifiers - look for "License ::" prefix
                         raw_license = self._extract_license_from_classifiers(info.get("classifiers", []))
+                    # If still empty, mark as Unknown so it's tracked but flagged
+                    if not raw_license:
+                        raw_license = "Unknown"
                     
                     return {
                         "version": info.get("version"),
