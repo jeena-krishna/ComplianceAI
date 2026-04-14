@@ -143,6 +143,28 @@ class DependencyCrawler:
         else:
             return await self._fetch_pypi_package_info(name, version)
     
+    def _clean_package_name(self, name: str) -> str:
+        """Clean package name by removing version specifiers and extras.
+        
+        Examples:
+            - "anyio<4,>=3.5.0" -> "anyio"
+            - "requests>=2.0.0" -> "requests"
+            - "package[extra]>=1.0" -> "package"
+            - "importlib-metadata; python_version<3.8" -> "importlib-metadata"
+        
+        Args:
+            name: Raw package name with possible version specifiers
+            
+        Returns:
+            Cleaned package name
+        """
+        import re
+        # Remove anything after version specifiers: <, >, =, !, ~, ;, [,
+        cleaned = re.split(r'[<>=!~;\[,]', name)[0]
+        # Also strip trailing whitespace
+        cleaned = cleaned.strip()
+        return cleaned
+    
     async def _fetch_pypi_package_info(self, name: str, version: str) -> Dict[str, Any]:
         """Fetch package information from PyPI.
         
@@ -173,12 +195,11 @@ class DependencyCrawler:
                     
                     for dep in requires_dist:
                         if dep:
-                            # Parse the dependency specification (e.g., "requests (>=2.0.0)")
-                            dep_name = dep.split()[0] if dep.split() else dep
-                            # Try to extract version constraint
+                            # Clean the package name - remove version specifiers
+                            dep_name = self._clean_package_name(dep)
+                            # Try to extract version constraint from parentheses if present
                             version_constraint = None
                             if '(' in dep and ')' in dep:
-                                # Extract version constraint from parentheses
                                 start = dep.find('(')
                                 end = dep.find(')')
                                 if start != -1 and end != -1:
