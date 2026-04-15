@@ -8,12 +8,6 @@ import json
 # Add src to path so we can import complianceai
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-# Mock external dependencies to avoid network calls
-from unittest.mock import Mock, patch
-import sys as mock_sys
-mock_sys.modules['aiohttp'] = Mock()
-mock_sys.modules['requests'] = Mock()
-
 from complianceai.orchestrator import Orchestrator, OrchestratorError
 
 

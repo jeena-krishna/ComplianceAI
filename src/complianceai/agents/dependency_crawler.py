@@ -342,8 +342,6 @@ class DependencyCrawler:
         Returns:
             Dictionary with package information
         """
-        session = await self._get_session()
-        
         # Build the URL
         if version:
             url = f"https://registry.npmjs.org/{quote_plus(name)}/{quote_plus(version)}"
@@ -351,6 +349,7 @@ class DependencyCrawler:
             url = f"https://registry.npmjs.org/{quote_plus(name)}"
         
         try:
+            session = await self._get_session()
             async with session.get(url) as response:
                 if response.status == 200:
                     data = await response.json()
@@ -370,15 +369,16 @@ class DependencyCrawler:
                     
                     return {
                         "version": data.get("version"),
-                        "license": data.get("license"),
+                        "license": self._extract_npm_license(data),
                         "classifiers": [],
                         "dependencies": dependencies
                     }
                 else:
                     logger.warning(f"NPM returned status {response.status} for {name}")
+                    # Return Unknown (not None) so license agent can try fallback lookups
                     return {
                         "version": version,
-                        "license": None,
+                        "license": "Unknown",
                         "classifiers": [],
                         "dependencies": []
                     }
@@ -386,7 +386,36 @@ class DependencyCrawler:
             logger.error(f"Error fetching NPM package {name}: {e}")
             return {
                 "version": version,
-                "license": None,
+                "license": "Unknown",
                 "classifiers": [],
                 "dependencies": []
             }
+    
+    def _extract_npm_license(self, data: dict) -> str:
+        """Extract license from npm registry response.
+        
+        Handle various formats: top-level license, or in versions[latest].license
+        """
+        # Direct license field
+        license = data.get("license")
+        if license:
+            return license
+        
+        # Check versions[latest].license
+        versions = data.get("versions", {})
+        if versions:
+            latest = versions.get("latest", {})
+            license = latest.get("license")
+            if license:
+                return license
+        
+        # Check dist-tags for latest version then find in versions
+        dist_tags = data.get("dist-tags", {})
+        if dist_tags:
+            latest_version = dist_tags.get("latest")
+            if latest_version and latest_version in versions:
+                license = versions[latest_version].get("license")
+                if license:
+                    return license
+        
+        return "Unknown"

@@ -248,11 +248,43 @@ pandas>=1.3.0
         
         self.assertEqual(result, expected)
     
-    def test_parse_github_url_placeholder(self):
-        """Test that GitHub URL parsing returns empty list (placeholder)."""
-        url = "https://github.com/user/repo"
-        result = self.agent.parse_input(url)
-        self.assertEqual(result, [])
+    def test_parse_github_url(self):
+        """Test parsing GitHub URL returns actual dependencies."""
+        import zipfile
+        import io
+        import requests as req
+        
+        requirements_content = "requests==2.31.0\nflask>=2.0.0\nnumpy==1.24.0"
+        
+        class MockZipResponse:
+            def __init__(self, status_code):
+                self.status_code = status_code
+            
+            @property
+            def content(self):
+                if self.status_code == 200:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                        zf.writestr('repo-main/requirements.txt', requirements_content)
+                    return buf.getvalue()
+                return b''
+        
+        original_get = req.get
+        
+        def mock_get(url, **kwargs):
+            if 'archive/refs/heads/' in url:
+                return MockZipResponse(200)
+            return MockZipResponse(404)
+        
+        req.get = mock_get
+        try:
+            url = "https://github.com/user/repo"
+            result = self.agent.parse_input(url)
+            self.assertGreater(len(result), 0)
+            names = [d['name'] for d in result]
+            self.assertIn('requests', names)
+        finally:
+            req.get = original_get
     
     def test_parse_package_spec_various_formats(self):
         """Test parsing various package specification formats."""
@@ -358,82 +390,33 @@ class TestGitHubParsing(unittest.TestCase):
         self.assertEqual(self.agent._normalize_version("=1.0.0"), "1.0.0")
         self.assertEqual(self.agent._normalize_version("1.0.0"), "1.0.0")
 
-    def test_fetch_github_file(self):
-        """Test fetching file from GitHub API."""
-        import base64
-        import requests as req
-        
-        class MockResponse:
-            def __init__(self, status_code, content):
-                self.status_code = status_code
-                self._content = content
-            
-            def json(self):
-                return {'content': self._content}
-        
-        original_get = req.get
-        
-        def mock_get(url, **kwargs):
-            if 'requirements.txt' in url:
-                return MockResponse(200, base64.b64encode(b'numpy==1.24.0').decode('ascii'))
-            return MockResponse(404, None)
-        
-        req.get = mock_get
-        try:
-            content = self.agent._fetch_github_file('owner', 'repo', 'requirements.txt')
-            self.assertEqual(content.strip(), 'numpy==1.24.0')
-        finally:
-            req.get = original_get
-
-    def test_fetch_github_file_not_found(self):
-        """Test fetching non-existent file."""
-        import requests as req
-        
-        class MockResponse:
-            def __init__(self, status_code):
-                self.status_code = status_code
-            
-            def json(self):
-                return {}
-        
-        original_get = req.get
-        
-        def mock_get(url, **kwargs):
-            return MockResponse(404)
-        
-        req.get = mock_get
-        try:
-            content = self.agent._fetch_github_file('owner', 'repo', 'nonexistent.txt')
-            self.assertEqual(content, '')
-        finally:
-            req.get = original_get
-
     def test_parse_github_url(self):
-        """Test parsing GitHub URL."""
-        import base64
+        """Test parsing GitHub URL using zip-based approach."""
+        import zipfile
+        import io
         import requests as req
         
         requirements_content = "requests==2.31.0\nflask>=2.0.0"
-        package_json_content = '{"dependencies": {"express": "^4.0.0"}}'
         
-        class MockResponse:
-            def __init__(self, status_code, content):
+        class MockZipResponse:
+            def __init__(self, status_code):
                 self.status_code = status_code
-                self._content = content
             
-            def json(self):
-                if self._content:
-                    return {'content': base64.b64encode(self._content.encode()).decode()}
-                return {}
+            @property
+            def content(self):
+                if self.status_code == 200:
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+                        zf.writestr('repo-main/requirements.txt', requirements_content)
+                    return buf.getvalue()
+                return b''
         
         original_get = req.get
         
         def mock_get(url, **kwargs):
-            if 'requirements.txt' in url:
-                return MockResponse(200, requirements_content)
-            elif 'package.json' in url:
-                return MockResponse(200, package_json_content)
-            return MockResponse(404, None)
+            if 'archive/refs/heads/' in url:
+                return MockZipResponse(200)
+            return MockZipResponse(404)
         
         req.get = mock_get
         try:
@@ -441,6 +424,29 @@ class TestGitHubParsing(unittest.TestCase):
             self.assertGreater(len(result), 0)
             names = [d['name'] for d in result]
             self.assertIn('requests', names)
+        finally:
+            req.get = original_get
+
+    def test_parse_github_url_not_found(self):
+        """Test parsing GitHub URL when branch doesn't exist."""
+        import requests as req
+        
+        class MockZipResponse:
+            def __init__(self, status_code):
+                self.status_code = status_code
+                self.content = b''
+        
+        original_get = req.get
+        
+        def mock_get(url, **kwargs):
+            if 'archive/refs/heads/' in url:
+                return MockZipResponse(404)
+            return MockZipResponse(404)
+        
+        req.get = mock_get
+        try:
+            result = self.agent._parse_github_url("https://github.com/owner/repo")
+            self.assertEqual(len(result), 0)
         finally:
             req.get = original_get
 

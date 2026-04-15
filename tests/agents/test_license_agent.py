@@ -140,7 +140,7 @@ class TestLicenseAgent(unittest.TestCase):
         self.assertEqual(self.agent._normalize_license(""), "Unknown")
         self.assertEqual(self.agent._normalize_license(None), "Unknown")
         self.assertEqual(self.agent._normalize_license("Some Weird License XYZ"), "Unknown")
-        self.assertEqual(self.agent._normalize_license(" Proprietary "), "Unknown")
+        self.assertEqual(self.agent._normalize_license("Proprietary"), "Proprietary")
     
     def test_normalize_license_already_valid(self):
         """Test that valid SPDX identifiers are preserved."""

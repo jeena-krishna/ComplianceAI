@@ -103,7 +103,7 @@ class TestDependencyCrawlerAsync(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["root"]["depth"], 1)
         self.assertEqual(result["child"]["depth"], 2)
 
-    @patch('aiohttp.ClientSession')
+    @patch('complianceai.agents.dependency_crawler.aiohttp.ClientSession')
     async def test_fetch_npm_package_info_http_error(self, mock_session_class):
         """Test npm package info fetch with HTTP error."""
         mock_response = AsyncMock()
@@ -116,10 +116,10 @@ class TestDependencyCrawlerAsync(unittest.IsolatedAsyncioTestCase):
         result = await self.crawler._fetch_npm_package_info("nonexistent-package", "1.0.0")
 
         self.assertEqual(result["version"], "1.0.0")
-        self.assertIsNone(result["license"])
+        self.assertEqual(result["license"], "Unknown")
         self.assertEqual(result["dependencies"], [])
 
-    @patch('aiohttp.ClientSession')
+    @patch('complianceai.agents.dependency_crawler.aiohttp.ClientSession')
     async def test_fetch_npm_package_info_exception(self, mock_session_class):
         """Test npm package info fetch with exception."""
         mock_session_class.side_effect = Exception("Network error")
@@ -127,7 +127,7 @@ class TestDependencyCrawlerAsync(unittest.IsolatedAsyncioTestCase):
         result = await self.crawler._fetch_npm_package_info("test-package", "1.0.0")
 
         self.assertEqual(result["version"], "1.0.0")
-        self.assertIsNone(result["license"])
+        self.assertEqual(result["license"], "Unknown")
         self.assertEqual(result["dependencies"], [])
 
 

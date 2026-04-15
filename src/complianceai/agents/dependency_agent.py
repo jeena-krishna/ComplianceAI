@@ -3,6 +3,10 @@
 import json
 import os
 import re
+import zipfile
+import io
+import tempfile
+import requests
 from typing import Dict, List, Any, Union
 from urllib.parse import urlparse
 
@@ -12,6 +16,8 @@ class DependencyAgent:
     
     def __init__(self):
         """Initialize the Dependency Agent."""
+        self.github_token = None  # Not needed anymore - zip approach doesn't hit API limits
+        
         # Regex patterns for parsing different dependency formats
         self.requirements_pattern = re.compile(
             r'^\s*([a-zA-Z0-9][a-zA-Z0-9._-]*)\s*([=<>!~]+.*)?\s*$'
@@ -253,15 +259,21 @@ class DependencyAgent:
         return None
     
     def _parse_github_url(self, url: str) -> List[Dict[str, Any]]:
-        """Parse a GitHub URL by fetching dependency files via GitHub API.
+        """Parse a GitHub URL by downloading the entire repo as a zip.
+        
+        This approach:
+        - Uses only 1 HTTP request (no rate limit issues)
+        - Searches entire repo including subdirectories for monorepos
+        - Supports all dependency file formats
         
         Args:
             url: GitHub repository URL (e.g., https://github.com/user/repo)
             
         Returns:
             List of dependencies found in the repo's dependency files
+            Also populates self._debug_info for UI display
         """
-        import requests
+        self._debug_info = []
         
         # Extract owner/repo from URL
         parsed = urlparse(url)
@@ -273,64 +285,256 @@ class DependencyAgent:
         owner = path_parts[0]
         repo_name = path_parts[1].replace('.git', '')
         
-        # Remove ref if specified (e.g., user/repo/tree/main)
-        if len(path_parts) > 3 and path_parts[2] == 'tree':
-            ref = path_parts[3]
-        else:
-            ref = 'main'
+        self._debug_info.append(f"Fetching {owner}/{repo_name}...")
         
-        # Try to fetch common dependency files
-        dependency_files = [
-            'requirements.txt',
-            'package.json',
-            'Pipfile',
-            'setup.py',
-        ]
+        # Try different branches
+        branches = ['main', 'master', 'develop', 'dev']
         
-        all_dependencies = []
-        
-        for dep_file in dependency_files:
-            content = self._fetch_github_file(owner, repo_name, dep_file, ref)
-            if content:
-                if dep_file == 'requirements.txt':
-                    deps = self._parse_raw_text(content)
-                elif dep_file == 'package.json':
-                    deps = self._parse_package_json_string(content)
-                elif dep_file in ['Pipfile', 'setup.py']:
-                    deps = []
-                else:
-                    deps = []
+        for branch in branches:
+            zip_url = f"https://github.com/{owner}/{repo_name}/archive/refs/heads/{branch}.zip"
+            
+            try:
+                response = requests.get(zip_url, timeout=60, allow_redirects=True)
+                if response.status_code != 200:
+                    continue
                 
-                all_dependencies.extend(deps)
+                self._debug_info.append(f"Downloaded branch: {branch}")
+                    
+                # Extract zip to temp folder
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    z = zipfile.ZipFile(io.BytesIO(response.content))
+                    z.extractall(tmpdir)
+                    
+                    # Find ALL dependency files recursively (including requirements*.txt pattern)
+                    all_dependencies = []
+                    found_files = []
+                    
+                    for root, dirs, files in os.walk(tmpdir):
+                        # Skip hidden directories and common non-dep dirs
+                        dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'venv', '.git')]
+                        
+                        for filename in files:
+                            # Check if it's a known dependency file pattern
+                            is_dep_file = any([
+                                'requirements' in filename.lower() and filename.endswith('.txt'),
+                                filename == 'package.json',
+                                filename == 'Pipfile',
+                                filename == 'pyproject.toml',
+                                filename == 'setup.py',
+                                filename == 'setup.cfg',
+                            ])
+                            
+                            if not is_dep_file:
+                                continue
+                            
+                            full_path = os.path.join(root, filename)
+                            rel_path = os.path.relpath(full_path, tmpdir)
+                            found_files.append(rel_path)
+                            
+                            try:
+                                with open(full_path, 'r', encoding='utf-8') as f:
+                                    content = f.read()
+                            except Exception:
+                                continue
+                            
+                            deps = []
+                            deps_count = 0
+                            
+                            # Parse based on file type
+                            if 'requirements' in filename.lower() and filename.endswith('.txt'):
+                                deps = self._parse_raw_text(content)
+                            elif filename == 'package.json':
+                                deps = self._parse_package_json_string(content)
+                            elif filename == 'pyproject.toml':
+                                deps, deps_count = self._parse_pyproject_toml(content)
+                            elif filename == 'setup.cfg':
+                                deps = self._parse_setup_cfg(content)
+                            elif filename == 'setup.py':
+                                deps = self._parse_setup_py(content)
+                            
+                            if deps:
+                                all_dependencies.extend(deps)
+                                self._debug_info.append(f"  Found {rel_path}: {len(deps)} deps")
+                            elif deps_count is not None:
+                                # pyproject returned deps count but they may be empty
+                                self._debug_info.append(f"  Found {rel_path}: {deps_count} deps (parsed)")
+                            else:
+                                self._debug_info.append(f"  Found {rel_path}: no parseable deps")
+                    
+                    if not found_files:
+                        self._debug_info.append("  No dependency files found")
+                    
+                    # If we found dependencies, return them
+                    if all_dependencies:
+                        final_deps = self._deduplicate_dependencies(all_dependencies)
+                        self._debug_info.append(f"Total unique deps: {len(final_deps)}")
+                        return final_deps
+                        
+            except Exception as e:
+                self._debug_info.append(f"Error: {str(e)}")
+                continue
         
-        return all_dependencies
+        self._debug_info.append("No dependencies found")
+        return []
     
-    def _fetch_github_file(self, owner: str, repo: str, file_path: str, ref: str = 'main') -> str:
-        """Fetch a file from GitHub API.
+    @property
+    def debug_info(self) -> List[str]:
+        """Get debug info for UI display."""
+        return getattr(self, '_debug_info', [])
+    
+    def _deduplicate_dependencies(self, deps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Remove duplicate dependencies, keeping first occurrence."""
+        seen = set()
+        unique = []
+        for dep in deps:
+            name = dep.get('name')
+            if name and name not in seen:
+                seen.add(name)
+                unique.append(dep)
+        return unique
+    
+    def _parse_pyproject_toml(self, content: str) -> tuple[List[Dict[str, Any]], int]:
+        """Parse pyproject.toml and extract dependencies.
         
         Args:
-            owner: Repository owner
-            repo: Repository name
-            file_path: Path to the file
-            ref: Branch or tag name (default: main)
+            content: Raw TOML content
             
         Returns:
-            File content as string, or empty string if not found
+            Tuple of (dependencies list, raw deps count for debug)
         """
-        import requests
-        
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={ref}"
+        dependencies = []
+        deps_count = 0
         
         try:
-            response = requests.get(api_url, timeout=10)
-            if response.status_code == 200:
-                data = response.json()
-                if 'content' in data:
-                    import base64
-                    return base64.b64decode(data['content']).decode('utf-8')
-            return ''
+            import tomli as tomllib
+            data = tomllib.loads(content)
+        except ImportError:
+            import tomllib
+            data = tomllib.loads(content)
+        
+        # Try PEP 621 format: project.dependencies
+        project_deps = data.get('project', {}).get('dependencies', [])
+        for dep in project_deps:
+            parsed = self._parse_package_spec(dep)
+            if parsed:
+                dependencies.append(parsed)
+        deps_count += len(project_deps)
+        
+        # Try Poetry format: tool.poetry.dependencies
+        poetry_deps = data.get('tool', {}).get('poetry', {}).get('dependencies', {})
+        for name, version in poetry_deps.items():
+            # Skip the python version constraint
+            if name == 'python':
+                continue
+            # Handle version as string (e.g., "^1.0" or exact version)
+            ver = str(version) if version else None
+            dependencies.append({'name': name, 'version': ver})
+        deps_count += len(poetry_deps)
+        
+        # Try optional-dependencies (extras)
+        optional_deps = data.get('project', {}).get('optional-dependencies', {})
+        for group_name, extras_dict in optional_deps.items():
+            for dep in extras_dict:
+                parsed = self._parse_package_spec(dep)
+                if parsed:
+                    dependencies.append(parsed)
+        deps_count += sum(len(v) for v in optional_deps.values())
+        
+        # Try build-system.requires (usually pip, setuptools, wheel)
+        build_requires = data.get('build-system', {}).get('requires', [])
+        for dep in build_requires:
+            parsed = self._parse_package_spec(dep)
+            if parsed:
+                dependencies.append(parsed)
+        deps_count += len(build_requires)
+        
+        return dependencies, deps_count
+    
+    def _parse_setup_cfg(self, content: str) -> List[Dict[str, Any]]:
+        """Parse setup.cfg and extract install_requires.
+        
+        Args:
+            content: Raw INI content
+            
+        Returns:
+            List of dependencies
+        """
+        import configparser
+        dependencies = []
+        
+        try:
+            config = configparser.ConfigParser()
+            config.read_string(content)
+            
+            if config.has_section('options'):
+                if config.has_option('options', 'install_requires'):
+                    install_requires = config.get('options', 'install_requires')
+                    # Parse line by line
+                    for line in install_requires.split('\n'):
+                        line = line.strip()
+                        if line:
+                            parsed = self._parse_package_spec(line)
+                            if parsed:
+                                dependencies.append(parsed)
         except Exception:
-            return ''
+            pass
+        
+        return dependencies
+    
+    def _parse_setup_py(self, content: str) -> List[Dict[str, Any]]:
+        """Parse setup.py and extract install_requires using regex.
+        
+        Args:
+            content: Raw setup.py content
+            
+        Returns:
+            List of dependencies
+        """
+        dependencies = []
+        
+        # Pattern 1: inline list install_requires = [...]
+        # Pattern to find install_requires = [...]
+        patterns = [
+            r'install_requires\s*=\s*\[(.*?)\]',
+            r'install_requires\s*=\s*\((.*?)\)',
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, content, re.DOTALL)
+            for match in matches:
+                # Parse each item in the list
+                for line in match.split(','):
+                    line = line.strip().strip('"\'')
+                    if line:
+                        parsed = self._parse_package_spec(line)
+                        if parsed:
+                            dependencies.append(parsed)
+        
+        # Pattern 2: variable reference like INSTALL_REQUIRES = [...]
+        # Find variable assignments and then find their references
+        var_pattern = r'(\w+)\s*=\s*\[(.*?)\]'
+        var_matches = re.findall(var_pattern, content, re.DOTALL)
+        
+        var_map = {}
+        for var_name, var_content in var_matches:
+            items = []
+            for line in var_content.split(','):
+                line = line.strip().strip('"\'')
+                if line:
+                    items.append(line)
+            var_map[var_name] = items
+        
+        # Find install_requires = VAR_NAME pattern
+        ref_pattern = r'install_requires\s*=\s*(\w+)'
+        ref_matches = re.findall(ref_pattern, content)
+        for var_name in ref_matches:
+            if var_name in var_map:
+                for line in var_map[var_name]:
+                    parsed = self._parse_package_spec(line)
+                    if parsed:
+                        dependencies.append(parsed)
+        
+        return dependencies
     
     def _parse_package_json_string(self, content: str) -> List[Dict[str, Any]]:
         """Parse a package.json string.
@@ -368,6 +572,8 @@ class DependencyAgent:
         Returns:
             Normalized version string
         """
+        if not version:
+            return None
         if version.startswith('^'):
             return version[1:]
         elif version.startswith('~'):

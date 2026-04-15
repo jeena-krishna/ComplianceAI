@@ -17,8 +17,9 @@ class LicenseAgent:
         'expat': 'MIT',
         ' permissive': 'MIT',
         'mit license (mit)': 'MIT',
-        'mit': 'MIT',
         'osi approved :: mit': 'MIT',
+        'license :: osi approved :: mit': 'MIT',
+        'license :: mit': 'MIT',
         
         # Apache variants
         'apache': 'Apache-2.0',
@@ -29,7 +30,9 @@ class LicenseAgent:
         'apache 2.0': 'Apache-2.0',
         'apache software license, version 2.0': 'Apache-2.0',
         'osi approved :: apache': 'Apache-2.0',
-        'apache license': 'Apache-2.0',
+        'license :: osi approved :: apache license 2.0': 'Apache-2.0',
+        'license :: apache': 'Apache-2.0',
+        'apache software foundation': 'Apache-2.0',
         
         # GPL variants
         'gpl': 'GPL-3.0',
@@ -41,6 +44,8 @@ class LicenseAgent:
         'gnu general public license (gpl)': 'GPL-3.0',
         'gnu general public license v3': 'GPL-3.0',
         'gnu general public license v2': 'GPL-2.0',
+        'license :: gnu general public license v3': 'GPL-3.0',
+        'license :: gnu general public license v2': 'GPL-2.0',
         
         # BSD variants
         'bsd': 'BSD-3-Clause',
@@ -53,22 +58,28 @@ class LicenseAgent:
         '3-clause bsd': 'BSD-3-Clause',
         '2-clause bsd': 'BSD-2-Clause',
         'osi approved :: bsd': 'BSD-3-Clause',
+        'license :: bsd': 'BSD-3-Clause',
+        'license :: bsd 3-clause': 'BSD-3-Clause',
+        'license :: bsd 2-clause': 'BSD-2-Clause',
         
         # ISC variants
         'isc': 'ISC',
         'isc license': 'ISC',
+        'license :: isc': 'ISC',
         
         # MPL variants
         'mpl': 'MPL-2.0',
         'mpl-2.0': 'MPL-2.0',
         'mozilla public license 2.0': 'MPL-2.0',
         'mpl 2.0': 'MPL-2.0',
+        'license :: mozilla public license 2.0': 'MPL-2.0',
         
         # Python specific
         'python software foundation license': 'PSF-2.0',
         'psf': 'PSF-2.0',
         'psf license': 'PSF-2.0',
         'python software foundation (psf)': 'PSF-2.0',
+        'license :: python software foundation': 'PSF-2.0',
         
         # Creative Commons
         'cc0': 'CC0-1.0',
@@ -76,6 +87,8 @@ class LicenseAgent:
         'cc-by-sa': 'CC-BY-SA-4.0',
         'cc0 1.0': 'CC0-1.0',
         'creative commons zero': 'CC0-1.0',
+        'creative commons zero 1.0': 'CC0-1.0',
+        'license :: cc0 1.0': 'CC0-1.0',
         
         # Public Domain
         'public domain': 'CC0-1.0',
@@ -86,12 +99,15 @@ class LicenseAgent:
         'agpl-3.0': 'AGPL-3.0',
         'agpl': 'AGPL-3.0',
         'gnu affero general public license': 'AGPL-3.0',
+        'license :: gnu affero general public license v3': 'AGPL-3.0',
         
         # LGPL
         'lgpl-2.1': 'LGPL-2.1',
         'lgpl': 'LGPL-2.1',
         'lgpl-3.0': 'LGPL-3.0',
         'gnu lesser general public license': 'LGPL-3.0',
+        'license :: gnu lesser general public license v3': 'LGPL-3.0',
+        'license :: gnu lesser general public license v2.1': 'LGPL-2.1',
         
         # zlib
         'zlib': 'Zlib',
@@ -102,14 +118,26 @@ class LicenseAgent:
         # Eclipse
         'epl 2.0': 'EPL-2.0',
         'eclipse public license': 'EPL-2.0',
+        'epl-2.0': 'EPL-2.0',
         
         # BSL
         'boost software license': 'BSL-1.0',
         'bsl': 'BSL-1.0',
+        'bsl-1.0': 'BSL-1.0',
         
         # Artistic
         'artistic-2.0': 'Artistic-2.0',
         'artistic license': 'Artistic-2.0',
+        
+        # Unicode
+        'unicode': 'Unicode-3.0',
+        'unicode-3.0': 'Unicode-3.0',
+        
+        # HPND
+        'hpnd': 'HPND',
+        
+        # 0BSD
+        '0bsd': '0BSD',
     }
     
     # License aliases that need case-insensitive matching
@@ -117,16 +145,26 @@ class LicenseAgent:
         # Various MIT aliases
         'the mit license': 'MIT',
         'mit license, version 2.0': 'MIT',
+        'expat license': 'MIT',
         
         # Various BSD aliases
         'new bsd': 'BSD-3-Clause',
         'three-clause bsd': 'BSD-3-Clause',
+        'simplified bsd': 'BSD-2-Clause',
         
         # Various Apache aliases
         'apache license': 'Apache-2.0',
+        'apache software foundation license': 'Apache-2.0',
         
         # ISC
         'internet systems consortium, inc.': 'ISC',
+        
+        # Copyright holder
+        'copyright': 'Unknown',
+        
+        # Proprietary-like
+        'proprietary': 'Proprietary',
+        'all rights reserved': 'Proprietary',
     }
     
     def __init__(self):
@@ -154,19 +192,24 @@ class LicenseAgent:
         if isinstance(dependencies, dict):
             deps_list = []
             for name, info in dependencies.items():
+                # Skip None info (shouldn't happen but handle gracefully)
+                if info is None:
+                    continue
                 deps_list.append({
                     'name': name,
-                    'version': info.get('version'),
-                    'license': info.get('license'),
-                    'license_expression': info.get('license_expression'),
-                    'classifiers': info.get('classifiers', []),
-                    'home_page': info.get('home_page'),
-                    'project_urls': info.get('project_urls', {}),
+                    'version': info.get('version') if info else None,
+                    'license': info.get('license') if info else None,
+                    'license_expression': info.get('license_expression') if info else None,
+                    'classifiers': info.get('classifiers', []) if info else [],
+                    'home_page': info.get('home_page') if info else None,
+                    'project_urls': info.get('project_urls', {}) if info else {},
                 })
             dependencies = deps_list
         
         for dep in dependencies:
-            name = dep.get('name', '')
+            if dep is None:
+                continue
+            name = dep.get('name', '') if dep else ''
             existing_license = dep.get('license')
             license_expression = dep.get('license_expression')
             classifiers = dep.get('classifiers', [])
@@ -238,8 +281,12 @@ class LicenseAgent:
         Returns:
             SPDX identifier or 'Unknown'
         """
-        # Normalize: replace hyphens/underscores for lookup
+        if not package_name:
+            return 'Unknown'
+        
+        # Normalize: try all variants - original, hyphens to underscores, underscores to hyphens
         package_normalized = package_name.replace('-', '_').lower()
+        package_hyphen = package_name.replace('_', '-').lower()
         package_lower = package_name.lower()
         
         # Known package -> license mappings (include both hyphen and underscore variants)
@@ -357,13 +404,129 @@ class LicenseAgent:
             'pdfplumber': 'MIT',
             'camelot_py': 'MIT',
             'camelot-py': 'MIT',
+            
+            # More common packages
+            'cython': 'Apache-2.0',
+            'multidict': 'MIT',
+            'frozenlist': 'MIT',
+            'aiosignal': 'MIT',
+            'yarl': 'MIT',
+            'attr': 'MIT',
+            'attrs': 'MIT',
+            'cchardet': 'LGPL-2.1',
+            'charset_normalizer': 'MIT',
+            'certifi': 'ISC',
+            'idna': 'Unicode-3.0',
+            'sniffio': 'MIT',
+            'h11': 'MIT',
+            'h2': 'MIT',
+            'priority': 'Apache-2.0',
+            'sortedcontainers': 'BSD-2-Clause',
+            'pytz': 'MIT',
+            'python_dateutil': 'BSD-3-Clause',
+            'cffi': 'MIT',
+            'pycparser': 'BSD-3-Clause',
+            'cryptography': 'Apache-2.0',
+            'cffi': 'MIT',
+            'pyasn1': 'BSD-2-Clause',
+            'six': 'MIT',
+            'bcrypt': 'Apache-2.0',
+            'construct': 'MIT',
+            'netaddr': 'MIT',
+            'jsonschema': 'MIT',
+            'jsonpointer': 'BSD-3-Clause',
+            'rfc3986': 'MIT',
+            'fqdn': 'ISC',
+            'idna': 'Unicode-3.0',
+            
+            # pydantic and related
+            'pydantic_core': 'MIT',
+            'pydantic-core': 'MIT',
+            'typing_extensions': 'PSF-2.0',
+            'typing-extensions': 'PSF-2.0',
+            'annotated_types': 'MIT',
+            'annotated-types': 'MIT',
+            
+            # windows stuff
+            'pywin32': 'PSF-2.0',
+            'pywintx': 'PSF-2.0',
+            
+            # more data stuff
+            'sqlparse': 'BSD-3-Clause',
+            'python_stdlib': 'PSF-2.0',
+            
+            # more web
+            'brotli': 'MIT',
+            'brotlicffi': 'MIT',
+            'zstandard': 'BSD-3-Clause',
+            'zstd': 'BSD-3-Clause',
+            'cachys': 'MIT',
+            
+            # Azure packages
+            'msrest': 'MIT',
+            'azure_core': 'MIT',
+            'azure-core': 'MIT',
+            'azure_storage_blob': 'MIT',
+            'azure-storage-blob': 'MIT',
+            'azure_storage_nspkg': 'MIT',
+            'azure-storage-nspkg': 'MIT',
+            'azure_cognitiveservices_speech': 'Proprietary',
+            'azure-cognitiveservices-speech': 'Proprietary',
+            
+            # ReportLab and related
+            'reportlab': 'BSD-3-Clause',
+            'rl_accel': 'BSD-3-Clause',
+            'rl-accel': 'BSD-3-Clause',
+            'rl_renderpm': 'BSD-3-Clause',
+            'rl-renderPM': 'BSD-3-Clause',
+            'rlpycairo': 'BSD-3-Clause',
+            'rlPyCairo': 'BSD-3-Clause',
+            'freetype_py': 'BSD-3-Clause',
+            'freetype-py': 'BSD-3-Clause',
+            
+            # Other common packages
+            'tzdata': 'Apache-2.0',
+            'enum34': 'BSD-3-Clause',
+            'dulwich': 'Apache-2.0',
+            'python_subunit': 'Apache-2.0',
+            'python-subunit': 'Apache-2.0',
+            'mypy_extensions': 'MIT',
+            'mypy-extensions': 'MIT',
+            'soupsieve': 'MIT',
+            'tornado': 'Apache-2.0',
+            
+            # JavaScript/Node packages (from npm)
+            'qunit': 'MIT',
+            'puppeteer': 'Apache-2.0',
+            'grunt': 'MIT',
+            'grunt_cli': 'MIT',
+            'grunt-cli': 'MIT',
+            'grunt_contrib_qunit': 'MIT',
+            'grunt-contrib-qunit': 'MIT',
+            'eslint': 'MIT',
+            'webpack': 'MIT',
+            'babel': 'MIT',
+            'jest': 'MIT',
+            'mocha': 'MIT',
+            'gulp': 'MIT',
+            'browserify': 'MIT',
+            'typescript': 'Apache-2.0',
+            'vue': 'MIT',
+            'react': 'MIT',
+            'angular': 'MIT',
+            'next': 'MIT',
+            'express': 'MIT',
+            'lodash': 'MIT',
+            'underscore': 'MIT',
+            'axios': 'MIT',
+            'jquery': 'MIT',
+            'bootstrap': 'MIT',
         }
         
-        # Try normalized (underscores), then original, then common patterns
-        if package_normalized in KNOWN_PACKAGES:
-            return KNOWN_PACKAGES[package_normalized]
-        if package_lower in KNOWN_PACKAGES:
-            return KNOWN_PACKAGES[package_lower]
+        # Try all variants for lookup
+        for lookup_name in [package_normalized, package_hyphen, package_lower]:
+            if lookup_name in KNOWN_PACKAGES:
+                return KNOWN_PACKAGES[lookup_name]
         
         # Common patterns for unknown packages
         common_patterns = {
@@ -387,6 +550,12 @@ class LicenseAgent:
     def _normalize_license(self, license_str: str) -> str:
         """Normalize a license string to standard SPDX identifier.
         
+        Handles:
+        - License expressions (MIT OR Apache-2.0)
+        - Copyright strings with file references
+        - Dual licenses with OR operators
+        - All PyPI license formats
+        
         Args:
             license_str: The license string to normalize
             
@@ -399,29 +568,68 @@ class LicenseAgent:
         # Convert to string if not already
         license_str = str(license_str).strip()
         
-        # If it's already a valid SPDX identifier, return it
-        if license_str in ['MIT', 'Apache-2.0', 'GPL-3.0', 'GPL-2.0', 'BSD-3-Clause', 
-                          'BSD-2-Clause', 'ISC', 'MPL-2.0', 'LGPL-2.1', 'LGPL-3.0',
-                          'AGPL-3.0', 'Zlib', 'PSF-2.0', 'Unlicense', 'CC0-1.0',
-                          'CC-BY-4.0', 'CC-BY-SA-4.0']:
-            return license_str
+        if not license_str:
+            return 'Unknown'
         
-        # Try to look up the license in our mapping
+        # Check for valid SPDX identifiers directly
+        VALID_SPDX = ['MIT', 'Apache-2.0', 'GPL-3.0', 'GPL-2.0', 'BSD-3-Clause',
+                    'BSD-2-Clause', 'ISC', 'MPL-2.0', 'LGPL-2.1', 'LGPL-3.0',
+                    'AGPL-3.0', 'Zlib', 'PSF-2.0', 'Unlicense', 'CC0-1.0',
+                    'CC-BY-4.0', 'CC-BY-SA-4.0', 'Proprietary', 'Artistic-2.0',
+                    'EPL-2.0', 'BSL-1.0', 'HPND', '0BSD', 'Unicode-3.0', 'curl']
+        for spdx in VALID_SPDX:
+            if license_str == spdx:
+                return spdx
+        
+        # Handle license expressions like "MIT OR Apache-2.0" or "Apache-2.0 OR BSD-3-Clause"
+        # Extract the first (usually more permissive) license from expressions
+        import re
+        if re.search(r'\bOR\b', license_str, re.IGNORECASE):
+            parts = re.split(r'\bOR\b', license_str, flags=re.IGNORECASE)
+            for part in parts:
+                part = part.strip()
+                if part:
+                    normalized = self._normalize_license(part)
+                    if normalized != 'Unknown':
+                        return normalized
+        
+        # Handle AND expressions (usually means more restrictive)
+        if re.search(r'\bAND\b', license_str, re.IGNORECASE):
+            parts = re.split(r'\bAND\b', license_str, flags=re.IGNORECASE)
+            for part in parts:
+                part = part.strip()
+                if part:
+                    normalized = self._normalize_license(part)
+                    if normalized != 'Unknown':
+                        return normalized
+        
+        # Handle WITH expressions (GPL with exception)
+        if re.search(r'\bWITH\b', license_str, re.IGNORECASE):
+            base_part = re.split(r'\bWITH\b', license_str, flags=re.IGNORECASE)[0].strip()
+            return self._normalize_license(base_part)
+        
+        # Try to look up the license in our mapping (case-insensitive)
         license_lower = license_str.lower()
         
         # Check for direct matches
         if license_lower in self._license_lookup:
             return self._license_lookup[license_lower]
         
-        # Try to find partial matches
+        # Try to find partial matches (substring matching)
         for key, spdx_id in self._license_lookup.items():
             if key in license_lower or license_lower in key:
                 return spdx_id
         
-        # Try to extract SPDX from common patterns
+        # Try to extract SPDX from common patterns using regex
         spdx_match = self._extract_spdx(license_str)
         if spdx_match:
             return spdx_match
+        
+        # Check for proprietary/copyright patterns
+        if 'copyright' in license_lower and 'all rights reserved' in license_lower:
+            return 'Proprietary'
+        if license_lower == 'proprietary':
+            return 'Proprietary'
         
         # If we can't determine it, mark as Unknown
         return 'Unknown'
