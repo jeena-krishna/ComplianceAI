@@ -21,7 +21,7 @@ st.set_page_config(
 def main():
     st.title("ComplianceAI")
     st.markdown("### Automated Dependency License Compliance Scanner")
-    st.markdown("Analyze your project dependencies for license compliance issues, conflicts, andsecurity risks.")
+    st.markdown("Analyze your project dependencies for license compliance issues, and security risks.")
 
     with st.sidebar:
         st.header("Input")
@@ -51,7 +51,10 @@ def main():
             )
             input_content = github_url
             if github_url:
-                file_name = f"github.com/{github_url.split('/')[-2:]}"
+                # Clean up the display - get owner/repo cleanly
+                parts = github_url.strip('/').split('/')
+                if len(parts) >= 2:
+                    file_name = f"{parts[-2]}/{parts[-1]}"
         else:
             input_content = st.text_area(
                 "Paste dependencies",
@@ -81,7 +84,7 @@ def main():
             )
         with col2:
             if file_name:
-                st.info(f"File: {file_name}")
+                st.info(f"Source: {file_name}")
             else:
                 st.info("Raw text input")
 
@@ -108,6 +111,10 @@ requests~=2.28.0
 flask>=2.0.0
 django>=4.0
 celery>=5.0""", language="text")
+    
+    # Footer
+    st.markdown("---")
+    st.caption("Built with multi-agent AI architecture • ComplianceAI")
 
 
 def display_report(result):
@@ -143,6 +150,13 @@ def display_report(result):
             if info.get("license") == "Unknown" or not info.get("license")
         ]
     
+    # Clean up package names - remove tilde prefix
+    for pkg in unknown_packages:
+        pkg["Package"] = pkg["Package"].lstrip("~")
+
+    # Sort alphabetically
+    unknown_packages = sorted(unknown_packages, key=lambda x: x["Package"].lower())
+    
     known_packages = [
         {"Package": name, "Version": info.get("version", ""), "License": info.get("license", "Unknown")}
         for name, info in dependencies.items()
@@ -154,9 +168,10 @@ def display_report(result):
     total_deps = len(dependencies)
     critical = sum(1 for c in conflicts if c.get("severity") == "critical")
     warnings = sum(1 for c in conflicts if c.get("severity") == "warning")
-    safe = len(known_packages) - critical - warnings
+    unknown_count = len(unknown_packages)
+    safe = total_deps - unknown_count - len(conflicts)
 
-    cols = st.columns(4)
+    cols = st.columns(5)
     with cols[0]:
         st.metric("Total Dependencies", total_deps)
     with cols[1]:
@@ -164,6 +179,8 @@ def display_report(result):
     with cols[2]:
         st.metric("Warnings", warnings, delta_color="inverse")
     with cols[3]:
+        st.metric("Unknown", unknown_count, delta_color="off")
+    with cols[4]:
         st.metric("Safe", safe, delta_color="normal")
 
     if conflicts:
@@ -250,12 +267,23 @@ def display_report(result):
     st.markdown("## Dependency Overview")
 
     if known_packages:
+        # Add status column with colored badges
+        for pkg in known_packages:
+            lic = pkg.get("License", "Unknown")
+            if lic in ["MIT", "BSD-3-Clause", "BSD-2-Clause", "Apache-2.0", "ISC", "Zlib"]:
+                pkg["Status"] = "🟢 Safe"
+            elif lic == "Unknown":
+                pkg["Status"] = "🟠 Unknown"
+            else:
+                pkg["Status"] = "🟡 Review"
+        
         st.dataframe(
             known_packages,
             column_config={
                 "Package": st.column_config.TextColumn("Package", width="medium"),
                 "Version": st.column_config.TextColumn("Version", width="small"),
                 "License": st.column_config.TextColumn("License", width="small"),
+                "Status": st.column_config.TextColumn("Status", width="small"),
             },
             hide_index=True,
             use_container_width=True,
@@ -264,16 +292,61 @@ def display_report(result):
     # Unknown licenses section for manual review
     if unknown_packages:
         with st.expander(f"Packages with Undetected Licenses ({len(unknown_packages)} need manual review)"):
+            # Build table with reason
+            unknown_table = []
+            for pkg in unknown_packages:
+                unknown_table.append({
+                    "Package Name": pkg["Package"],
+                    "Reason": "License not found in PyPI or npm registries"
+                })
+            
             st.dataframe(
-                unknown_packages,
+                unknown_table,
                 column_config={
-                    "Package": st.column_config.TextColumn("Package", width="medium"),
-                    "Version": st.column_config.TextColumn("Version", width="small"),
+                    "Package Name": st.column_config.TextColumn("Package Name", width="medium"),
+                    "Reason": st.column_config.TextColumn("Reason", width="large"),
                 },
                 hide_index=True,
                 use_container_width=True,
             )
             st.caption("These packages need manual license verification.")
+    
+    # Full dependency list
+    with st.expander("Full Dependency List"):
+        # Build full list with status
+        full_deps = []
+        for name, info in dependencies.items():
+            lic = info.get("license", "Unknown")
+            
+            if lic == "Unknown":
+                status = "🟠 Unknown"
+            elif lic in ["MIT", "BSD-3-Clause", "BSD-2-Clause", "Apache-2.0", "ISC", "Zlib"]:
+                status = "🟢 Safe"
+            else:
+                status = "🟡 Review"
+            
+            full_deps.append({
+                "Package": name,
+                "Version": info.get("version", "unknown"),
+                "License": lic,
+                "Status": status,
+            })
+        
+        # Sort alphabetically
+        full_deps = sorted(full_deps, key=lambda x: x["Package"].lower())
+        
+        st.dataframe(
+            full_deps,
+            column_config={
+                "Package": st.column_config.TextColumn("Package", width="medium"),
+                "Version": st.column_config.TextColumn("Version", width="small"),
+                "License": st.column_config.TextColumn("License", width="small"),
+                "Status": st.column_config.TextColumn("Status", width="small"),
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=400,
+        )
 
     errors = result.get("errors")
     if errors:

@@ -108,7 +108,7 @@ class DependencyCrawler:
         # Normalize dependencies to a list of names for the output
         dep_tuples = package_info.get("dependencies", [])
         dep_names = [d[0] for d in dep_tuples]
-        # Add package to the tree
+        # Add package to the tree (preserve _source and _package_name from npm fallbacks)
         tree[name] = {
             "version": package_info.get("version", version),
             "license": package_info.get("license"),
@@ -118,6 +118,8 @@ class DependencyCrawler:
             "home_page": package_info.get("home_page"),
             "project_urls": package_info.get("project_urls", {}),
             "license_expression": package_info.get("license_expression"),
+            "_source": package_info.get("_source"),  # Track npm vs pypi
+            "_package_name": package_info.get("_package_name"),  # Original npm package name
         }
         
         # Recursively crawl dependencies
@@ -134,7 +136,7 @@ class DependencyCrawler:
     async def _fetch_package_info(self, name: str, version: str) -> Dict[str, Any]:
         """Fetch package information from the appropriate registry.
         
-        Try PyPI first, then fallback to npm if PyPI returns 404.
+        Try PyPI first, then fallback to npm if PyPI returns 404 or has no license.
         
         Args:
             name: Package name
@@ -143,16 +145,28 @@ class DependencyCrawler:
         Returns:
             Dictionary with package information including dependencies
         """
-        # Try PyPI first - most packages are Python packages
-        pypi_result = await self._fetch_pypi_package_info(name, version)
+        # Clean the name and version to handle version specifiers like "1.2.3,<2.0.0"
+        clean_name = self._clean_package_name(name)
+        clean_version = self._clean_package_name(version) if version else None
         
-        # Check if PyPI returned a valid result (version means success)
-        if pypi_result.get("version"):
+        # Try PyPI first - most packages are Python packages
+        pypi_result = await self._fetch_pypi_package_info(clean_name, clean_version)
+        
+        # Check if PyPI returned a valid result AND has a license
+        if pypi_result.get("version") and pypi_result.get("license"):
             return pypi_result
         
-        # PyPI returned 404 or error - try npm as fallback
-        logger.debug(f"PyPI not found for {name}, trying npm")
-        return await self._fetch_npm_package_info(name, version)
+        # PyPI returned 404 or has no license - try npm as fallback
+        # This is important for npm packages that don't exist in PyPI
+        logger.debug(f"PyPI not found or no license for {clean_name}, trying npm")
+        npm_result = await self._fetch_npm_package_info(clean_name, clean_version)
+        
+        # If npm found a valid result, use it
+        if npm_result.get("version"):
+            return npm_result
+        
+        # Both failed - return PyPI result (even if None license) as last resort
+        return pypi_result
     
     def _clean_package_name(self, name: str) -> str:
         """Clean package name by removing version specifiers and extras.
@@ -164,10 +178,27 @@ class DependencyCrawler:
             - "importlib-metadata; python_version<3.8" -> "importlib-metadata"
             - "pillow (>=9.0)" -> "pillow"
             - "soupsieve (1.9)" -> "soupsieve"
+            - ">=18.0.0" -> "18.0.0" (for version strings)
+            - "^18.0.0" -> "18.0.0"
+            - "~18.2.0" -> "18.2.0"
+            - "18.2.0,>=18.0.0" -> "18.2.0"
         """
+        if not name:
+            return name
+        
         import re
-        # Remove version specifiers, extras, semicolons, parentheses, and everything after
-        cleaned = re.split(r'[<>=!~;\[,\(\s]', name)[0]
+        # First, handle comma-separated versions (take first): "1.0.0,>=2.0.0" -> "1.0.0"
+        if ',' in name:
+            name = name.split(',')[0]
+        
+        # Remove version operators prefix: ^ > < ~ = >= <= !
+        # Match patterns like ^1.0.0, >=1.0.0, <=1.0.0, ~1.0.0
+        match = re.match(r'^[\^~>=<!\s]+(.+)$', name)
+        if match:
+            name = match.group(1)
+        
+        # Now split on remaining version specifiers, extras, semicolons, parentheses
+        cleaned = re.split(r'[<>=!;\[,\(\s]', name)[0]
         cleaned = cleaned.strip()
         return cleaned
     
