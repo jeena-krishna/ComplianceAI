@@ -371,16 +371,20 @@ class DependencyCrawler:
                         "version": data.get("version"),
                         "license": self._extract_npm_license(data),
                         "classifiers": [],
-                        "dependencies": dependencies
+                        "dependencies": dependencies,
+                        "_source": "npm",
+                        "_package_name": name,
                     }
                 else:
                     logger.warning(f"NPM returned status {response.status} for {name}")
-                    # Return Unknown (not None) so license agent can try fallback lookups
+                    # Return Unknown with source info so license agent knows to skip warnings
                     return {
                         "version": version,
                         "license": "Unknown",
                         "classifiers": [],
-                        "dependencies": []
+                        "dependencies": [],
+                        "_source": "npm-not-found",
+                        "_package_name": name,
                     }
         except Exception as e:
             logger.error(f"Error fetching NPM package {name}: {e}")
@@ -388,7 +392,9 @@ class DependencyCrawler:
                 "version": version,
                 "license": "Unknown",
                 "classifiers": [],
-                "dependencies": []
+                "dependencies": [],
+                "_source": "npm-error",
+                "_package_name": name,
             }
     
     def _extract_npm_license(self, data: dict) -> str:

@@ -198,8 +198,9 @@ class LicenseAgent:
                 if info is None:
                     self.warnings.append({
                         'package': name,
-                        'reason': 'Package info is None',
-                        'severity': 'warning'
+                        'reason': 'Package info is None - crawler returned no data',
+                        'severity': 'warning',
+                        'action': 'Check the package name and try again'
                     })
                     continue
                 deps_list.append({
@@ -210,6 +211,8 @@ class LicenseAgent:
                     'classifiers': info.get('classifiers', []) if info else [],
                     'home_page': info.get('home_page') if info else None,
                     'project_urls': info.get('project_urls', {}) if info else {},
+                    '_source': info.get('_source'),  # Track how we found the package
+                    '_package_name': info.get('_package_name'),  # Original package name for npm fallbacks
                 })
             dependencies = deps_list
         
@@ -223,13 +226,16 @@ class LicenseAgent:
                     self.warnings.append({
                         'package': name or 'unknown',
                         'reason': 'Package has no name',
-                        'severity': 'warning'
+                        'severity': 'warning',
+                        'action': 'Check dependency file for malformed entry'
                     })
                     continue
                 
                 existing_license = dep.get('license')
                 license_expression = dep.get('license_expression')
                 classifiers = dep.get('classifiers', [])
+                source = dep.get('_source', 'pypi')
+                orig_name = dep.get('_package_name', name)
                 
                 # First try the direct license field
                 normalized_license = self._normalize_license(existing_license)
@@ -252,16 +258,42 @@ class LicenseAgent:
                     if github_url:
                         normalized_license = self._lookup_github_license(github_url)
                 
-                # Track if license was not found
+                # Track if license was not found with appropriate severity and action
                 if normalized_license == 'Unknown':
-                    reason = 'No license field in PyPI metadata'
-                    if not existing_license:
-                        reason = 'License field is None or empty'
-                    self.warnings.append({
-                        'package': name,
-                        'reason': reason,
-                        'severity': 'warning'
-                    })
+                    # Check source to provide accurate warning
+                    if source in ('npm', 'npm-not-found', 'npm-error'):
+                        # npm packages may not have license fields in npm registry
+                        # This is expected for many npm packages, so it's info level
+                        self.warnings.append({
+                            'package': name,
+                            'reason': f'npm package not in PyPI - {name} does not exist in Python packages',
+                            'severity': 'info',
+                            'action': f'Verify license at: https://www.npmjs.com/package/{orig_name}'
+                        })
+                    elif source == 'pypi' or not source:
+                        # PyPI package without license field is a warning
+                        if not existing_license:
+                            self.warnings.append({
+                                'package': name,
+                                'reason': 'License field is None or empty in PyPI metadata',
+                                'severity': 'warning',
+                                'action': f'Check: https://pypi.org/pypi/{name}/json or the package\'s GitHub repo'
+                            })
+                        else:
+                            self.warnings.append({
+                                'package': name,
+                                'reason': 'No license could be normalized from PyPI metadata',
+                                'severity': 'warning',
+                                'action': f'Check: https://pypi.org/pypi/{name}/json or the package\'s GitHub repo'
+                            })
+                    else:
+                        # Unknown source
+                        self.warnings.append({
+                            'package': name,
+                            'reason': f'Package source unknown: {source}',
+                            'severity': 'warning',
+                            'action': 'Manual review needed'
+                        })
                 
                 # Create the output with license information, use name as key
                 licensed_dependencies[name] = {
