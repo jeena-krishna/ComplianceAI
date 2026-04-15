@@ -152,8 +152,8 @@ class DependencyCrawler:
         # Try PyPI first - most packages are Python packages
         pypi_result = await self._fetch_pypi_package_info(clean_name, clean_version)
         
-        # Check if PyPI returned a valid result AND has a license
-        if pypi_result.get("version") and pypi_result.get("license"):
+        # Check if PyPI returned a valid result AND has a real license (not Unknown)
+        if pypi_result.get("version") and pypi_result.get("license") and pypi_result.get("license") != "Unknown":
             return pypi_result
         
         # PyPI returned 404 or has no license - try npm as fallback
@@ -161,8 +161,8 @@ class DependencyCrawler:
         logger.debug(f"PyPI not found or no license for {clean_name}, trying npm")
         npm_result = await self._fetch_npm_package_info(clean_name, clean_version)
         
-        # If npm found a valid result, use it
-        if npm_result.get("version"):
+        # If npm found a valid result with license, use it (version may be None for npm latest)
+        if npm_result.get("license") and npm_result.get("license") != "Unknown":
             return npm_result
         
         # Both failed - return PyPI result (even if None license) as last resort
@@ -199,7 +199,7 @@ class DependencyCrawler:
         
         # Now split on remaining version specifiers, extras, semicolons, parentheses
         cleaned = re.split(r'[<>=!;\[,\(\s]', name)[0]
-        cleaned = cleaned.strip()
+        cleaned = cleaned.strip().rstrip("~>=<!")
         return cleaned
     
     def _extract_license_from_classifiers(self, classifiers: list) -> str:
@@ -398,8 +398,14 @@ class DependencyCrawler:
                     for dep_name, dep_version in peer_deps.items():
                         dependencies.append((dep_name, dep_version))
                     
+                    # Get version from dist-tags if version is None
+                    npm_version = data.get("version")
+                    if not npm_version:
+                        dist_tags = data.get("dist-tags", {})
+                        npm_version = dist_tags.get("latest")
+                    
                     return {
-                        "version": data.get("version"),
+                        "version": npm_version,
                         "license": self._extract_npm_license(data),
                         "classifiers": [],
                         "dependencies": dependencies,

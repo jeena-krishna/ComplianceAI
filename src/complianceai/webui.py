@@ -150,9 +150,9 @@ def display_report(result):
             if info.get("license") == "Unknown" or not info.get("license")
         ]
     
-    # Clean up package names - remove tilde prefix
+    # Clean up package names - remove trailing version operators
     for pkg in unknown_packages:
-        pkg["Package"] = pkg["Package"].lstrip("~")
+        pkg["Package"] = pkg["Package"].strip("~>=<!")
 
     # Sort alphabetically
     unknown_packages = sorted(unknown_packages, key=lambda x: x["Package"].lower())

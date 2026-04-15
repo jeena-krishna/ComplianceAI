@@ -223,8 +223,8 @@ class DependencyAgent:
             name = match.group(1)
             version_spec = match.group(2)
             
-            # Clean up the name (remove extras)
-            name = name.strip()
+            # Clean up the name (remove trailing version operators like ~=, >=, <=, etc.)
+            name = name.strip().rstrip("~>=<!")
             
             if not name:
                 return None

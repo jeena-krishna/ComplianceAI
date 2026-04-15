@@ -304,6 +304,8 @@ class LicenseAgent:
                     'original_license': existing_license,
                     'license_expression': dep.get('license_expression'),
                     'classifiers': dep.get('classifiers', []),
+                    '_source': dep.get('_source'),
+                    '_package_name': dep.get('_package_name'),
                 }
             except Exception as e:
                 # Handle any unexpected errors gracefully

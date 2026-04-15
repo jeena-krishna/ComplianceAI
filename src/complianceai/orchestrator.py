@@ -107,7 +107,34 @@ class Orchestrator:
         if licensed_dependencies is None:
             raise LicenseIdentificationError("Failed to identify licenses")
         
-        # 3b: Merge crawler license data as safety net - prefer crawler's license
+        # 3b: For packages still showing Unknown, try npm registry as fallback
+        from urllib.parse import quote_plus
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                for pkg_name in list(licensed_dependencies.keys()):
+                    info = licensed_dependencies[pkg_name]
+                    if info.get('license') in (None, 'Unknown', 'Unknown'):
+                        # Looks like npm package - try npm directly
+                        if pkg_name.startswith('@') or any(x in pkg_name.lower() for x in ['react', 'vue', 'angular', 'eslint', 'tailwind', 'lodash', 'moment', 'axios']):
+                            url = f"https://registry.npmjs.org/{quote_plus(pkg_name)}"
+                            try:
+                                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                                    if resp.status == 200:
+                                        data = await resp.json()
+                                        npm_lic = data.get('license')
+                                        if npm_lic and npm_lic != 'Unknown':
+                                            normalized = self.license_agent._normalize_license(npm_lic)
+                                            if normalized and normalized != 'Unknown':
+                                                info['license'] = normalized
+                                                info['original_license'] = npm_lic
+                                                info['license_source'] = 'npm'
+                            except:
+                                pass
+        except:
+            pass
+        
+        # Original merge: update with crawler license data where available
         for pkg_name, crawler_info in dependency_tree.items():
             crawler_license = crawler_info.get('license')
             if crawler_license and crawler_license != 'Unknown' and pkg_name in licensed_dependencies:
@@ -116,6 +143,8 @@ class Orchestrator:
                     licensed_dependencies[pkg_name]['license'] = normalized
                     licensed_dependencies[pkg_name]['original_license'] = crawler_license
                     licensed_dependencies[pkg_name]['license_source'] = 'crawler'
+        
+        # Store dep tree for debugging
         
         # Step 4: Detect conflicts
         conflicts_result = self._detect_conflicts(licensed_dependencies)
