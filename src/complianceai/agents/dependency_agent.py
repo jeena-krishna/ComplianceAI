@@ -185,9 +185,19 @@ class DependencyAgent:
         # package!=1.0.0
         # package
         # package@1.0.0 (npm style)
+        # "package" (quoted string from setup.py)
         
         # Remove whitespace
         spec = spec.strip()
+        
+        # Strip quotes (common in setup.py: "package", 'package')
+        if (spec.startswith('"') and spec.endswith('"')) or \
+           (spec.startswith("'") and spec.endswith("'")):
+            spec = spec[1:-1].strip()
+        
+        # Skip empty specs
+        if not spec:
+            return None
         
         # Handle @ syntax (common in npm/yarn) - this includes scoped packages like @types/node
         if '@' in spec:
@@ -266,6 +276,11 @@ class DependencyAgent:
         - Searches entire repo including subdirectories for monorepos
         - Supports all dependency file formats
         
+        For monorepos:
+        - Walks ALL subdirectories to find dependency files
+        - Extracts dependencies from ALL pyproject.toml, setup.py, setup.cfg, etc.
+        - Deduplicates by package name, keeping first version found
+        
         Args:
             url: GitHub repository URL (e.g., https://github.com/user/repo)
             
@@ -310,6 +325,10 @@ class DependencyAgent:
                     found_files = []
                     
                     for root, dirs, files in os.walk(tmpdir):
+                        # Calculate depth from root (after tmpdir/<repo>-<branch>/)
+                        rel_path = root[len(tmpdir):].lstrip(os.sep)
+                        depth = rel_path.count(os.sep) + (1 if rel_path else 0)
+                        
                         # Skip hidden directories and common non-dep dirs
                         dirs[:] = [d for d in dirs if not d.startswith('.') and d not in ('node_modules', 'venv', '.git')]
                         
@@ -336,6 +355,7 @@ class DependencyAgent:
                                     content = f.read()
                             except Exception:
                                 continue
+                            
                             
                             deps = []
                             deps_count = 0
@@ -466,23 +486,72 @@ class DependencyAgent:
             config = configparser.ConfigParser()
             config.read_string(content)
             
+            # Parse [options] section
             if config.has_section('options'):
                 if config.has_option('options', 'install_requires'):
                     install_requires = config.get('options', 'install_requires')
-                    # Parse line by line
-                    for line in install_requires.split('\n'):
-                        line = line.strip()
-                        if line:
-                            parsed = self._parse_package_spec(line)
-                            if parsed:
-                                dependencies.append(parsed)
+                    deps = self._parse_requirements_list(install_requires)
+                    for dep in deps:
+                        parsed = self._parse_package_spec(dep)
+                        if parsed:
+                            dependencies.append(parsed)
+            
+            # Parse [options.extras_require] section
+            if config.has_section('options.extras_require'):
+                for key in config.options('options.extras_require'):
+                    extras = config.get('options.extras_require', key)
+                    deps = self._parse_requirements_list(extras)
+                    for dep in deps:
+                        parsed = self._parse_package_spec(dep)
+                        if parsed:
+                            dependencies.append(parsed)
         except Exception:
             pass
         
         return dependencies
     
+    def _parse_requirements_list(self, text: str) -> List[str]:
+        """Parse a requirements list string into individual package specs.
+        
+        Handles:
+        - comma-separated lists
+        - multiline lists with backslash continuation
+        - semicolon-separated (environment markers)
+        
+        Args:
+            text: Requirements string
+            
+        Returns:
+            List of individual package specifications
+        """
+        packages = []
+        
+        # Replace line continuations with spaces
+        text = text.replace('\\\n', ' ').replace('\\\r\n', ' ')
+        
+        # Split by comma or semicolon (semicolons are usually markers)
+        parts = re.split(r'[;,\n]', text)
+        
+        for part in parts:
+            part = part.strip()
+            # Skip empty parts and comments
+            if part and not part.startswith('#'):
+                # Remove any inline comments
+                if '#' in part:
+                    part = part.split('#')[0].strip()
+                if part:
+                    packages.append(part)
+        
+        return packages
+    
     def _parse_setup_py(self, content: str) -> List[Dict[str, Any]]:
         """Parse setup.py and extract install_requires using regex.
+        
+        Handles:
+        - Inline lists: install_requires = ["pkg1", "pkg2"]
+        - Variable references: install_requires = DEPS
+        - setup_requires and extras_require
+        - Multiline lists
         
         Args:
             content: Raw setup.py content
@@ -492,45 +561,58 @@ class DependencyAgent:
         """
         dependencies = []
         
-        # Pattern 1: inline list install_requires = [...]
-        # Pattern to find install_requires = [...]
-        patterns = [
-            r'install_requires\s*=\s*\[(.*?)\]',
-            r'install_requires\s*=\s*\((.*?)\)',
+        # Strategy 1: Find inline lists with better regex
+        # Use [\s\S]*? to match across newlines until we find matching brackets
+        inline_patterns = [
+            r'install_requires\s*=\s*\[([\s\S]*?)\]',
+            r'install_requires\s*=\s*\(["\']?([\s\S]*?)["\']?\)',
         ]
         
-        for pattern in patterns:
-            matches = re.findall(pattern, content, re.DOTALL)
+        for pattern in inline_patterns:
+            matches = re.findall(pattern, content)
             for match in matches:
-                # Parse each item in the list
-                for line in match.split(','):
-                    line = line.strip().strip('"\'')
-                    if line:
-                        parsed = self._parse_package_spec(line)
+                deps = self._parse_requirements_list(match)
+                for dep in deps:
+                    parsed = self._parse_package_spec(dep)
+                    if parsed:
+                        dependencies.append(parsed)
+        
+        # Strategy 2: Find variable assignments (e.g., DEPS = ["pkg1", "pkg2"])
+        # Look for patterns like: VARIABLE = [...]
+        # Use greedy matching to capture full list content
+        var_pattern = r'(\w+)\s*=\s*\[(.*?)\]'
+        
+        var_map = {}
+        for match in re.finditer(var_pattern, content, re.DOTALL):
+            var_name = match.group(1)
+            var_content = match.group(2)
+            deps = self._parse_requirements_list(var_content)
+            var_map[var_name] = deps
+        
+        # Find references to these variables (case-insensitive)
+        ref_patterns = [
+            r'install_requires\s*=\s*(\w+)',
+            r'setup_requires\s*=\s*(\w+)',
+        ]
+        
+        for ref_pattern in ref_patterns:
+            for match in re.finditer(ref_pattern, content, re.IGNORECASE):
+                var_name = match.group(1)
+                if var_name in var_map:
+                    for dep in var_map[var_name]:
+                        parsed = self._parse_package_spec(dep)
                         if parsed:
                             dependencies.append(parsed)
         
-        # Pattern 2: variable reference like INSTALL_REQUIRES = [...]
-        # Find variable assignments and then find their references
-        var_pattern = r'(\w+)\s*=\s*\[(.*?)\]'
-        var_matches = re.findall(var_pattern, content, re.DOTALL)
-        
-        var_map = {}
-        for var_name, var_content in var_matches:
-            items = []
-            for line in var_content.split(','):
-                line = line.strip().strip('"\'')
-                if line:
-                    items.append(line)
-            var_map[var_name] = items
-        
-        # Find install_requires = VAR_NAME pattern
-        ref_pattern = r'install_requires\s*=\s*(\w+)'
-        ref_matches = re.findall(ref_pattern, content)
-        for var_name in ref_matches:
-            if var_name in var_map:
-                for line in var_map[var_name]:
-                    parsed = self._parse_package_spec(line)
+        # Strategy 3: Parse extras_require
+        extras_pattern = r'extras_require\s*=\s*\{([^}]+)\}'
+        for match in re.finditer(extras_pattern, content):
+            extras_block = match.group(1)
+            # Find all key: value pairs or key = value pairs
+            for extra_match in re.finditer(r'["\']?(\w+)["\']?\s*[:=]\s*\[([\s\S]*?)\]', extras_block):
+                extra_deps = self._parse_requirements_list(extra_match.group(2))
+                for dep in extra_deps:
+                    parsed = self._parse_package_spec(dep)
                     if parsed:
                         dependencies.append(parsed)
         
