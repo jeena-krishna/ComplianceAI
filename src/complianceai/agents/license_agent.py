@@ -254,9 +254,14 @@ class LicenseAgent:
                 
                 # If still unknown, try GitHub fallback
                 if normalized_license == 'Unknown':
-                    # Check both Repository and Homepage keys in project_urls
+                    # Check all possible keys in project_urls
                     project_urls = dep.get('project_urls', {})
-                    github_url = dep.get('home_page') or project_urls.get('Repository') or project_urls.get('Homepage')
+                    github_url = (
+                        dep.get('home_page') or 
+                        project_urls.get('Repository') or 
+                        project_urls.get('Homepage') or
+                        project_urls.get('Source')
+                    )
                     if github_url:
                         normalized_license = self._lookup_github_license(github_url)
                     
@@ -915,12 +920,17 @@ class LicenseAgent:
             if response.status_code == 200:
                 data = response.json()
                 items = data.get('items', [])
-                # Check multiple results - first might not be right repo
+                if not items:
+                    return 'Unknown'
                 for repo in items[:5]:
                     full_name = repo.get('full_name', '')
                     if full_name and package_name.lower() in full_name.lower():
-                        owner, repo_name = full_name.split('/')
-                        license_key = repo.get('license', {}).get('key', '')
+                        # Handle cases where full_name doesn't contain '/'
+                        if '/' not in full_name:
+                            continue
+                        owner, repo_name = full_name.split('/', 1)
+                        license_info = repo.get('license') or {}
+                        license_key = license_info.get('key', '') if license_info else ''
                         if license_key:
                             return self._normalize_license(license_key)
                         
