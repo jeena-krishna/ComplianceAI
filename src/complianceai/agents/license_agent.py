@@ -185,8 +185,10 @@ class LicenseAgent:
             
         Returns:
             Dictionary with normalized license information, keys are package names.
+            Also populates self.warnings for packages with missing licenses.
         """
         licensed_dependencies = {}
+        self.warnings = []
         
         # Handle dictionary format from crawler
         if isinstance(dependencies, dict):
@@ -194,6 +196,11 @@ class LicenseAgent:
             for name, info in dependencies.items():
                 # Skip None info (shouldn't happen but handle gracefully)
                 if info is None:
+                    self.warnings.append({
+                        'package': name,
+                        'reason': 'Package info is None',
+                        'severity': 'warning'
+                    })
                     continue
                 deps_list.append({
                     'name': name,
@@ -209,44 +216,87 @@ class LicenseAgent:
         for dep in dependencies:
             if dep is None:
                 continue
-            name = dep.get('name', '') if dep else ''
-            existing_license = dep.get('license')
-            license_expression = dep.get('license_expression')
-            classifiers = dep.get('classifiers', [])
             
-            # First try the direct license field
-            normalized_license = self._normalize_license(existing_license)
-            
-            # Try license_expression field (newer PyPI field with SPDX)
-            if normalized_license == 'Unknown' and license_expression:
-                normalized_license = self._normalize_license(license_expression)
-            
-            # If still unknown, try to extract from classifiers
-            if normalized_license == 'Unknown' and classifiers:
-                normalized_license = self._extract_from_classifiers(classifiers)
-            
-            # If still unknown, try to look up by package name (common packages)
-            if normalized_license == 'Unknown':
-                normalized_license = self._guess_from_package_name(name)
-            
-            # If still unknown, try GitHub fallback
-            if normalized_license == 'Unknown':
-                github_url = dep.get('home_page') or dep.get('project_urls', {}).get('Repository')
-                if github_url:
-                    normalized_license = self._lookup_github_license(github_url)
-            
-            # Create the output with license information, use name as key
-            licensed_dependencies[name] = {
-                'name': name,
-                'version': dep.get('version'),
-                'license': normalized_license,
-                'license_source': self._get_license_source(existing_license, normalized_license),
-                'original_license': existing_license,
-                'license_expression': dep.get('license_expression'),
-                'classifiers': dep.get('classifiers', []),
-            }
+            try:
+                name = dep.get('name', '') if dep else ''
+                if not name:
+                    self.warnings.append({
+                        'package': name or 'unknown',
+                        'reason': 'Package has no name',
+                        'severity': 'warning'
+                    })
+                    continue
+                
+                existing_license = dep.get('license')
+                license_expression = dep.get('license_expression')
+                classifiers = dep.get('classifiers', [])
+                
+                # First try the direct license field
+                normalized_license = self._normalize_license(existing_license)
+                
+                # Try license_expression field (newer PyPI field with SPDX)
+                if normalized_license == 'Unknown' and license_expression:
+                    normalized_license = self._normalize_license(license_expression)
+                
+                # If still unknown, try to extract from classifiers
+                if normalized_license == 'Unknown' and classifiers:
+                    normalized_license = self._extract_from_classifiers(classifiers)
+                
+                # If still unknown, try to look up by package name (common packages)
+                if normalized_license == 'Unknown':
+                    normalized_license = self._guess_from_package_name(name)
+                
+                # If still unknown, try GitHub fallback
+                if normalized_license == 'Unknown':
+                    github_url = dep.get('home_page') or dep.get('project_urls', {}).get('Repository')
+                    if github_url:
+                        normalized_license = self._lookup_github_license(github_url)
+                
+                # Track if license was not found
+                if normalized_license == 'Unknown':
+                    reason = 'No license field in PyPI metadata'
+                    if not existing_license:
+                        reason = 'License field is None or empty'
+                    self.warnings.append({
+                        'package': name,
+                        'reason': reason,
+                        'severity': 'warning'
+                    })
+                
+                # Create the output with license information, use name as key
+                licensed_dependencies[name] = {
+                    'name': name,
+                    'version': dep.get('version'),
+                    'license': normalized_license,
+                    'license_source': self._get_license_source(existing_license, normalized_license),
+                    'original_license': existing_license,
+                    'license_expression': dep.get('license_expression'),
+                    'classifiers': dep.get('classifiers', []),
+                }
+            except Exception as e:
+                # Handle any unexpected errors gracefully
+                name = dep.get('name', 'unknown') if dep else 'unknown'
+                self.warnings.append({
+                    'package': name,
+                    'reason': f'Error identifying license: {str(e)}',
+                    'severity': 'warning'
+                })
+                licensed_dependencies[name] = {
+                    'name': name,
+                    'version': dep.get('version'),
+                    'license': 'Unknown',
+                    'license_source': 'error',
+                    'original_license': None,
+                    'license_expression': None,
+                    'classifiers': [],
+                }
         
         return licensed_dependencies
+    
+    @property
+    def get_warnings(self) -> List[Dict[str, Any]]:
+        """Get warnings list for packages with missing licenses."""
+        return getattr(self, 'warnings', [])
     
     def _extract_from_classifiers(self, classifiers: List[str]) -> str:
         """Extract license from PyPI classifiers.
@@ -555,6 +605,7 @@ class LicenseAgent:
         - Copyright strings with file references
         - Dual licenses with OR operators
         - All PyPI license formats
+        - None and empty strings
         
         Args:
             license_str: The license string to normalize
@@ -562,11 +613,18 @@ class LicenseAgent:
         Returns:
             Normalized SPDX license identifier or 'Unknown'
         """
+        # Handle None, empty, or non-string input gracefully
+        if license_str is None:
+            return 'Unknown'
+        
         if not license_str:
             return 'Unknown'
         
         # Convert to string if not already
-        license_str = str(license_str).strip()
+        try:
+            license_str = str(license_str).strip()
+        except (TypeError, ValueError):
+            return 'Unknown'
         
         if not license_str:
             return 'Unknown'

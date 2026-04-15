@@ -144,13 +144,19 @@ class ConflictAgent:
     
     def _check_compatibility(self, license1: str, license2: str) -> str:
         """Check compatibility between two licenses."""
+        # Handle None values
+        if license1 is None:
+            return 'compatible'
+        if license2 is None:
+            return 'compatible'
+        
         if license1 == license2:
             return 'compatible'
         
         # Unknown/missing licenses are not conflicts - they are missing data
-        if not license1 or license1 in ('Unknown', 'None', ''):
+        if not license1 or str(license1) in ('Unknown', 'None', ''):
             return 'compatible'
-        if not license2 or license2 in ('Unknown', 'None', ''):
+        if not license2 or str(license2) in ('Unknown', 'None', ''):
             return 'compatible'
         
         if license1 in self.LICENSE_COMPATIBILITY:

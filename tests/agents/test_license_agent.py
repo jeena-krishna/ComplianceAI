@@ -265,6 +265,66 @@ class TestGitHubLicenseDetection(unittest.TestCase):
         result = self.agent.identify_licenses(dependencies)
         self.assertIsInstance(result, dict)
         self.assertIn('unknown-pkg', result)
+    
+    def test_normalize_license_none(self):
+        """Test that normalizing None returns Unknown."""
+        result = self.agent._normalize_license(None)
+        self.assertEqual(result, 'Unknown')
+    
+    def test_normalize_license_empty_string(self):
+        """Test that normalizing empty string returns Unknown."""
+        result = self.agent._normalize_license('')
+        self.assertEqual(result, 'Unknown')
+    
+    def test_identify_license_none(self):
+        """Test identifying a package with license = None."""
+        dependencies = [
+            {'name': 'none-license-pkg', 'version': '1.0.0', 'license': None},
+        ]
+        
+        result = self.agent.identify_licenses(dependencies)
+        self.assertIn('none-license-pkg', result)
+        self.assertEqual(result['none-license-pkg']['license'], 'Unknown')
+    
+    def test_identify_license_empty_string(self):
+        """Test identifying a package with license = ''."""
+        dependencies = [
+            {'name': 'empty-license-pkg', 'version': '1.0.0', 'license': ''},
+        ]
+        
+        result = self.agent.identify_licenses(dependencies)
+        self.assertIn('empty-license-pkg', result)
+        self.assertEqual(result['empty-license-pkg']['license'], 'Unknown')
+    
+    def test_identify_license_missing_field(self):
+        """Test identifying a package with no license field at all."""
+        dependencies = [
+            {'name': 'missing-license-pkg', 'version': '1.0.0'},  # No license field
+        ]
+        
+        result = self.agent.identify_licenses(dependencies)
+        self.assertIn('missing-license-pkg', result)
+        self.assertEqual(result['missing-license-pkg']['license'], 'Unknown')
+    
+    def test_identify_license_dict_with_none_value(self):
+        """Test identifying from dict with None values."""
+        dependencies = {
+            'pkg1': {'version': '1.0.0', 'license': None},
+            'pkg2': None,  # Entire info is None
+        }
+        
+        result = self.agent.identify_licenses(dependencies)
+        self.assertIsInstance(result, dict)
+    
+    def test_identify_warnings_list(self):
+        """Test that warnings are created for packages with missing licenses."""
+        dependencies = [
+            {'name': 'warn-pkg', 'version': '1.0.0', 'license': None},
+        ]
+        
+        result = self.agent.identify_licenses(dependencies)
+        warnings = getattr(self.agent, 'warnings', [])
+        self.assertGreater(len(warnings), 0)
 
 
 if __name__ == '__main__':
