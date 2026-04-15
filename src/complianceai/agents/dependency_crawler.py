@@ -152,20 +152,48 @@ class DependencyCrawler:
         # Try PyPI first - most packages are Python packages
         pypi_result = await self._fetch_pypi_package_info(clean_name, clean_version)
         
-        # Check if PyPI returned a valid result AND has a real license (not Unknown)
-        if pypi_result.get("version") and pypi_result.get("license") and pypi_result.get("license") != "Unknown":
+        # Check if PyPI returned a valid result AND has a real license (not Unknown/empty)
+        raw_license = pypi_result.get("license")
+        license_expression = pypi_result.get("license_expression")
+        has_valid_license = (
+            pypi_result.get("version") and 
+            raw_license and 
+            raw_license.strip() and 
+            raw_license.upper() not in ('UNKNOWN', 'UNLICENSED', '') and
+            raw_license.upper() != 'UNKNOWN'
+        )
+        has_valid_expression = (
+            license_expression and 
+            license_expression.strip() and
+            license_expression.upper() not in ('UNKNOWN', 'UNLICENSED', '')
+        )
+        
+        if has_valid_license or has_valid_expression:
             return pypi_result
         
-        # PyPI returned 404 or has no license - try npm as fallback
+        # PyPI returned 404 or has no/empty license - try latest version
+        # Many packages (like torch 1.0.0) have empty license at specific version but latest has it
+        if pypi_result.get("version"):
+            logger.debug(f"PyPI {clean_name}@{clean_version} has no license, trying latest")
+            latest_result = await self._fetch_pypi_package_info(clean_name, None)
+            latest_license = latest_result.get("license")
+            if latest_license and latest_license.strip() and latest_license.upper() not in ('UNKNOWN', 'UNLICENSED', ''):
+                latest_result["dependencies"] = pypi_result.get("dependencies", [])
+                return latest_result
+            if latest_result.get("license_expression") and latest_result.get("license_expression").strip():
+                latest_result["dependencies"] = pypi_result.get("dependencies", [])
+                return latest_result
+        
+        # PyPI returned 404 - package doesn't exist in PyPI, try npm as fallback
         # This is important for npm packages that don't exist in PyPI
-        logger.debug(f"PyPI not found or no license for {clean_name}, trying npm")
-        npm_result = await self._fetch_npm_package_info(clean_name, clean_version)
+        if pypi_result.get("version") is None:
+            logger.debug(f"PyPI returned 404 for {clean_name}, trying npm")
+            npm_result = await self._fetch_npm_package_info(clean_name, clean_version)
+            if npm_result.get("license") and npm_result.get("license") not in ('Unknown', 'UNKNOWN'):
+                return npm_result
         
-        # If npm found a valid result with license, use it (version may be None for npm latest)
-        if npm_result.get("license") and npm_result.get("license") != "Unknown":
-            return npm_result
-        
-        # Both failed - return PyPI result (even if None license) as last resort
+        # PyPI returned but has no/empty license - return result with None license
+        # The license_agent will try GitHub fallback for packages where home_page is available
         return pypi_result
     
     def _clean_package_name(self, name: str) -> str:
@@ -321,15 +349,16 @@ class DependencyCrawler:
                     # 1. license_expression (newest, most reliable)
                     # 2. license (common)
                     # 3. classifiers (look for "License ::" prefix)
-                    # 4. If all empty, mark as Unknown
+                    # 4. If all empty/unknown, need to fetch latest version
                     raw_license = info.get("license_expression")
                     if not raw_license:
                         raw_license = info.get("license")
                     if not raw_license:
                         raw_license = self._extract_license_from_classifiers(info.get("classifiers", []))
-                    # If still empty, mark as Unknown so it's tracked but flagged
-                    if not raw_license:
-                        raw_license = "Unknown"
+                    
+                    # If still no valid license (None, empty, "UNKNOWN", etc.), mark for retry with latest
+                    # We don't set to "Unknown" here - let the caller decide
+                    has_valid_license = raw_license and raw_license.strip() and raw_license.upper() not in ('UNKNOWN', 'UNLICENSED', '')
                     
                     return {
                         "version": info.get("version"),

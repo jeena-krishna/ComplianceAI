@@ -137,10 +137,11 @@ class Orchestrator:
         # Original merge: update with crawler license data where available
         for pkg_name, crawler_info in dependency_tree.items():
             crawler_license = crawler_info.get('license')
-            if crawler_license and crawler_license != 'Unknown' and pkg_name in licensed_dependencies:
-                normalized = self.license_agent._normalize_license(crawler_license)
-                if normalized != 'Unknown':
-                    licensed_dependencies[pkg_name]['license'] = normalized
+            if crawler_license:
+                normalized_crawler = self.license_agent._normalize_license(crawler_license)
+                # Only overwrite if crawler found a valid license (not Unknown/empty/UNKNOWN)
+                if normalized_crawler != 'Unknown' and pkg_name in licensed_dependencies:
+                    licensed_dependencies[pkg_name]['license'] = normalized_crawler
                     licensed_dependencies[pkg_name]['original_license'] = crawler_license
                     licensed_dependencies[pkg_name]['license_source'] = 'crawler'
         

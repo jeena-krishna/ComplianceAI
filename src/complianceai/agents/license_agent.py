@@ -254,9 +254,15 @@ class LicenseAgent:
                 
                 # If still unknown, try GitHub fallback
                 if normalized_license == 'Unknown':
-                    github_url = dep.get('home_page') or dep.get('project_urls', {}).get('Repository')
+                    # Check both Repository and Homepage keys in project_urls
+                    project_urls = dep.get('project_urls', {})
+                    github_url = dep.get('home_page') or project_urls.get('Repository') or project_urls.get('Homepage')
                     if github_url:
                         normalized_license = self._lookup_github_license(github_url)
+                    
+                    # If no GitHub URL or lookup failed, try searching for the repository
+                    if normalized_license == 'Unknown' and name:
+                        normalized_license = self._search_github_for_license(name)
                 
                 # Track if license was not found with appropriate severity and action
                 if normalized_license == 'Unknown':
@@ -782,11 +788,23 @@ class LicenseAgent:
         parsed = urlparse(url)
         path_parts = parsed.path.strip('/').split('/')
         
-        if len(path_parts) < 2:
-            return 'Unknown'
+        # Handle two cases:
+        # 1. Full repo URL: github.com/owner/repo
+        # 2. User/org URL: github.com/owner (no repo) - try searching
         
-        owner = path_parts[0]
-        repo_name = path_parts[1].replace('.git', '')
+        owner = None
+        repo_name = None
+        
+        if len(path_parts) >= 2:
+            owner = path_parts[0]
+            repo_name = path_parts[1].replace('.git', '')
+        elif len(path_parts) == 1 and path_parts[0]:
+            # Try searching for repository by username/org
+            owner = path_parts[0]
+            return self._search_github_for_license(owner)
+        
+        if not owner or not repo_name:
+            return 'Unknown'
         
         license_files = ['LICENSE', 'LICENSE.md', 'LICENSE.txt', 'COPYING', 'COPYING.md']
         
@@ -877,3 +895,47 @@ class LicenseAgent:
         
         # If normalized version differs, it was inferred
         return 'inferred'
+    
+    def _search_github_for_license(self, package_name: str) -> str:
+        """Search GitHub for a package's repository and detect license.
+        
+        Args:
+            package_name: Name of the package
+            
+        Returns:
+            Normalized SPDX license or 'Unknown'
+        """
+        from urllib.parse import quote_plus
+        
+        # Search for the exact package name first
+        search_url = f"https://api.github.com/search/repositories?q={quote_plus(package_name)}+in:name"
+        
+        try:
+            response = requests.get(search_url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                items = data.get('items', [])
+                # Check multiple results - first might not be right repo
+                for repo in items[:5]:
+                    full_name = repo.get('full_name', '')
+                    if full_name and package_name.lower() in full_name.lower():
+                        owner, repo_name = full_name.split('/')
+                        license_key = repo.get('license', {}).get('key', '')
+                        if license_key:
+                            return self._normalize_license(license_key)
+                        
+                        # Try to fetch LICENSE file directly
+                        lic = self._fetch_github_file(owner, repo_name, 'LICENSE')
+                        if lic:
+                            detected = self._detect_license_from_content(lic)
+                            if detected != 'Unknown':
+                                return detected
+                        lic = self._fetch_github_file(owner, repo_name, 'LICENSE.md')
+                        if lic:
+                            detected = self._detect_license_from_content(lic)
+                            if detected != 'Unknown':
+                                return detected
+        except Exception:
+            pass
+        
+        return 'Unknown'
